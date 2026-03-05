@@ -21,6 +21,7 @@ Orquestrador de multiagents em Python para o ecossistema VidaSync.
 3. Configure variaveis:
    ```bash
    copy .env.example .env
+   # opcional: use .env.local para overrides locais
    ```
 4. Suba a API:
    ```bash
