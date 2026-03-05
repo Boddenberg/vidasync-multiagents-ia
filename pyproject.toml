@@ -1,0 +1,38 @@
+﻿[project]
+name = "vidasync-multiagents-ia"
+version = "0.1.0"
+description = "Multi-agent orchestrator for VidaSync with LangGraph, LangChain, and RAG"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "VidaSync Team" }
+]
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+  "pydantic-settings>=2.10.0",
+  "langchain>=0.3.27",
+  "langgraph>=0.6.7",
+  "langchain-openai>=0.3.32",
+  "chromadb>=1.0.20"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4.0",
+  "httpx>=0.28.0",
+  "ruff>=0.12.0"
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
