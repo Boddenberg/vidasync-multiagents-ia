@@ -1,5 +1,7 @@
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,18 +13,58 @@ from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import (
     AgenteCaloriasTexto,
     CaloriasTextoResponse,
+    FonteCaloriasConsulta,
     ItemCaloriasTexto,
+    OpenFoodFactsProduct,
+    SelecaoFonteCalorias,
     TotaisCaloriasTexto,
 )
+from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService
+from vidasync_multiagents_ia.services.taco_online_service import TacoOnlineService
+
+_FONTE_TACO = "TABELA_TACO_ONLINE"
+_FONTE_OPEN_FOOD_FACTS = "OPEN_FOOD_FACTS"
+
+
+@dataclass(slots=True)
+class _FonteCaloriasCandidate:
+    fonte: str
+    item: str
+    calorias_kcal: float | None
+    proteina_g: float | None
+    carboidratos_g: float | None
+    lipidios_g: float | None
+    confianca: float
+    detalhes: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fonte": self.fonte,
+            "item": self.item,
+            "calorias_kcal": self.calorias_kcal,
+            "proteina_g": self.proteina_g,
+            "carboidratos_g": self.carboidratos_g,
+            "lipidios_g": self.lipidios_g,
+            "confianca": self.confianca,
+            "detalhes": self.detalhes,
+        }
 
 
 class CaloriasTextoService:
-    def __init__(self, settings: Settings, client: OpenAIClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        client: OpenAIClient | None = None,
+        taco_online_service: TacoOnlineService | None = None,
+        open_food_facts_service: OpenFoodFactsService | None = None,
+    ) -> None:
         self._settings = settings
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
         )
+        self._taco_online_service = taco_online_service or TacoOnlineService()
+        self._open_food_facts_service = open_food_facts_service or OpenFoodFactsService()
         self._logger = logging.getLogger(__name__)
 
     def calcular(
@@ -47,37 +89,28 @@ class CaloriasTextoService:
             },
         )
 
-        system_prompt = (
-            "Voce e um agente nutricional que estima macros por descricao textual de alimentos. "
-            "Responda somente JSON valido, sem markdown."
-        )
-        user_prompt = (
-            f"Contexto: {contexto}. Idioma: {idioma}. "
-            "Interprete o texto e retorne um JSON com as chaves: "
-            "itens, totais, warnings. "
-            "Cada item deve ter: descricao_original, alimento, quantidade_texto, calorias_kcal, "
-            "proteina_g, carboidratos_g, lipidios_g, confianca, observacoes. "
-            "A chave totais deve ter: calorias_kcal, proteina_g, carboidratos_g, lipidios_g. "
-            "Use numeros (sem unidade) sempre que possivel."
-            f"\n\nTexto do usuario:\n{texto_value}"
-        )
-
-        try:
-            payload = self._client.generate_json_from_text(
-                model=self._settings.openai_model,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
+        single_food = _extract_single_food_request(texto_value)
+        if single_food is not None:
+            calculo_estruturado = self._calcular_item_unico_estruturado(
+                texto_original=texto_value,
+                food_query=single_food[0],
+                grams=single_food[1],
+                contexto=contexto,
+                idioma=idioma,
             )
-        except APIConnectionError as exc:
-            self._logger.exception("Falha de conexao com a OpenAI em calorias_texto")
-            raise ServiceError("Falha de conexao com a OpenAI.", status_code=502) from exc
-        except APIError as exc:
-            self._logger.exception("Erro da OpenAI em calorias_texto")
-            raise ServiceError(f"Erro da OpenAI: {exc.__class__.__name__}", status_code=502) from exc
-        except ValueError as exc:
-            self._logger.exception("Resposta da OpenAI nao retornou JSON valido em calorias_texto")
-            raise ServiceError("Resposta da OpenAI em formato invalido para calculo de calorias.", status_code=502) from exc
+            if calculo_estruturado is not None:
+                self._logger.info(
+                    "calorias_texto.completed",
+                    extra={
+                        "contexto": contexto,
+                        "itens": len(calculo_estruturado.itens),
+                        "warnings": len(calculo_estruturado.warnings),
+                        "confianca_media": calculo_estruturado.agente.confianca_media,
+                    },
+                )
+                return calculo_estruturado
 
+        payload = self._calcular_via_llm(contexto=contexto, idioma=idioma, texto_value=texto_value)
         itens = self._parse_itens(payload.get("itens") or payload.get("items"))
         totais = self._parse_totais(payload.get("totais") or payload.get("totals"), itens)
         warnings = _to_str_list(payload.get("warnings"))
@@ -100,6 +133,8 @@ class CaloriasTextoService:
             itens=itens,
             totais=totais,
             warnings=warnings,
+            fontes_consultadas=[],
+            selecao_fonte=None,
             agente=AgenteCaloriasTexto(
                 contexto="calcular_calorias_texto",
                 nome_agente="agente_calculo_calorias_texto",
@@ -109,6 +144,310 @@ class CaloriasTextoService:
             ),
             extraido_em=datetime.now(timezone.utc),
         )
+
+    def _calcular_item_unico_estruturado(
+        self,
+        *,
+        texto_original: str,
+        food_query: str,
+        grams: float,
+        contexto: str,
+        idioma: str,
+    ) -> CaloriasTextoResponse | None:
+        candidates, warnings = self._consultar_fontes_em_paralelo(food_query=food_query, grams=grams)
+        if not candidates:
+            return None
+
+        selected, selection, selection_warnings = self._selecionar_melhor_fonte(
+            candidates=candidates,
+            food_query=food_query,
+            grams=grams,
+            idioma=idioma,
+        )
+        warnings.extend(selection_warnings)
+
+        quantity_text = _format_grams_text(grams) if _contains_explicit_grams(texto_original) else None
+        item = ItemCaloriasTexto(
+            descricao_original=texto_original,
+            alimento=selected.item,
+            quantidade_texto=quantity_text,
+            calorias_kcal=selected.calorias_kcal,
+            proteina_g=selected.proteina_g,
+            carboidratos_g=selected.carboidratos_g,
+            lipidios_g=selected.lipidios_g,
+            confianca=selected.confianca,
+            observacoes=selected.detalhes,
+        )
+        totais = TotaisCaloriasTexto(
+            calorias_kcal=selected.calorias_kcal,
+            proteina_g=selected.proteina_g,
+            carboidratos_g=selected.carboidratos_g,
+            lipidios_g=selected.lipidios_g,
+        )
+        fontes_consultadas = [
+            FonteCaloriasConsulta(
+                fonte=candidate.fonte,
+                item=candidate.item,
+                calorias_kcal=candidate.calorias_kcal,
+                proteina_g=candidate.proteina_g,
+                carboidratos_g=candidate.carboidratos_g,
+                lipidios_g=candidate.lipidios_g,
+                confianca=candidate.confianca,
+                detalhes=candidate.detalhes,
+            )
+            for candidate in _order_candidates(candidates)
+        ]
+
+        return CaloriasTextoResponse(
+            contexto=contexto,
+            idioma=idioma,
+            texto=texto_original,
+            itens=[item],
+            totais=totais,
+            warnings=warnings,
+            fontes_consultadas=fontes_consultadas,
+            selecao_fonte=selection,
+            agente=AgenteCaloriasTexto(
+                contexto="calcular_calorias_texto",
+                nome_agente="agente_calculo_calorias_texto",
+                status="parcial" if warnings else "sucesso",
+                modelo=self._settings.openai_model,
+                confianca_media=selected.confianca,
+            ),
+            extraido_em=datetime.now(timezone.utc),
+        )
+
+    def _consultar_fontes_em_paralelo(
+        self,
+        *,
+        food_query: str,
+        grams: float,
+    ) -> tuple[list[_FonteCaloriasCandidate], list[str]]:
+        warnings: list[str] = []
+        candidates: list[_FonteCaloriasCandidate] = []
+        futures: dict[Any, str] = {}
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures[executor.submit(self._consultar_fonte_taco, food_query=food_query, grams=grams)] = _FONTE_TACO
+            futures[
+                executor.submit(self._consultar_fonte_open_food_facts, food_query=food_query, grams=grams)
+            ] = _FONTE_OPEN_FOOD_FACTS
+
+            for future in as_completed(futures):
+                fonte = futures[future]
+                try:
+                    candidate = future.result()
+                    if candidate is not None:
+                        candidates.append(candidate)
+                except ServiceError as exc:
+                    self._logger.info(
+                        "calorias_texto.structured_source_not_available",
+                        extra={"fonte": fonte, "food_query": food_query, "status_code": exc.status_code},
+                    )
+                    warnings.append(f"Fonte {fonte} indisponivel para '{food_query}'.")
+                except Exception:  # noqa: BLE001
+                    self._logger.exception(
+                        "calorias_texto.structured_source_failed",
+                        extra={"fonte": fonte, "food_query": food_query},
+                    )
+                    warnings.append(f"Falha inesperada ao consultar a fonte {fonte}.")
+        return candidates, warnings
+
+    def _consultar_fonte_taco(self, *, food_query: str, grams: float) -> _FonteCaloriasCandidate | None:
+        response = self._taco_online_service.get_food(query=food_query, grams=grams)
+        adjusted = response.ajustado
+        if not _has_core_macros(
+            energy=adjusted.energia_kcal,
+            protein=adjusted.proteina_g,
+            carbs=adjusted.carboidratos_g,
+            fat=adjusted.lipidios_g,
+        ):
+            return None
+
+        item = (response.nome_alimento or response.slug or food_query).strip()
+        details = f"Base: {response.base_calculo or '100 gramas'}; grupo: {response.grupo_alimentar or 'n/d'}."
+        confidence = _estimate_confidence(
+            fonte=_FONTE_TACO,
+            calorias_kcal=adjusted.energia_kcal,
+            proteina_g=adjusted.proteina_g,
+            carboidratos_g=adjusted.carboidratos_g,
+            lipidios_g=adjusted.lipidios_g,
+        )
+        return _FonteCaloriasCandidate(
+            fonte=_FONTE_TACO,
+            item=item,
+            calorias_kcal=adjusted.energia_kcal,
+            proteina_g=adjusted.proteina_g,
+            carboidratos_g=adjusted.carboidratos_g,
+            lipidios_g=adjusted.lipidios_g,
+            confianca=confidence,
+            detalhes=details,
+        )
+
+    def _consultar_fonte_open_food_facts(self, *, food_query: str, grams: float) -> _FonteCaloriasCandidate | None:
+        response = self._open_food_facts_service.search(query=food_query, grams=grams, page=1, page_size=5)
+        best_product = _select_best_open_food_facts_product(response.produtos)
+        if best_product is None:
+            return None
+
+        adjusted = best_product.ajustado
+        if not _has_core_macros(
+            energy=adjusted.energia_kcal,
+            protein=adjusted.proteina_g,
+            carbs=adjusted.carboidratos_g,
+            fat=adjusted.lipidios_g,
+        ):
+            return None
+
+        item = (
+            best_product.nome_produto
+            or best_product.marcas
+            or f"produto {best_product.codigo_barras}"
+        ).strip()
+        details = f"Codigo de barras: {best_product.codigo_barras}."
+        confidence = _estimate_confidence(
+            fonte=_FONTE_OPEN_FOOD_FACTS,
+            calorias_kcal=adjusted.energia_kcal,
+            proteina_g=adjusted.proteina_g,
+            carboidratos_g=adjusted.carboidratos_g,
+            lipidios_g=adjusted.lipidios_g,
+        )
+        return _FonteCaloriasCandidate(
+            fonte=_FONTE_OPEN_FOOD_FACTS,
+            item=item,
+            calorias_kcal=adjusted.energia_kcal,
+            proteina_g=adjusted.proteina_g,
+            carboidratos_g=adjusted.carboidratos_g,
+            lipidios_g=adjusted.lipidios_g,
+            confianca=confidence,
+            detalhes=details,
+        )
+
+    def _selecionar_melhor_fonte(
+        self,
+        *,
+        candidates: list[_FonteCaloriasCandidate],
+        food_query: str,
+        grams: float,
+        idioma: str,
+    ) -> tuple[_FonteCaloriasCandidate, SelecaoFonteCalorias, list[str]]:
+        if len(candidates) == 1:
+            selected = candidates[0]
+            selection = SelecaoFonteCalorias(
+                fonte_escolhida=selected.fonte,
+                confianca=selected.confianca,
+                justificativa="Somente uma fonte retornou dados estruturados.",
+                agente_seletor_acionado=False,
+            )
+            return selected, selection, [f"Somente a fonte {selected.fonte} retornou dados estruturados."]
+
+        warning = ""
+        selection = self._selecionar_com_agente(
+            candidates=candidates,
+            food_query=food_query,
+            grams=grams,
+            idioma=idioma,
+        )
+        if selection is not None:
+            selected = _match_candidate_by_source(candidates, selection.fonte_escolhida)
+            if selected is not None:
+                return selected, selection, []
+            warning = "Agente seletor retornou fonte invalida; aplicado fallback deterministico."
+        else:
+            warning = "Agente seletor indisponivel; aplicado fallback deterministico."
+
+        fallback = max(candidates, key=_candidate_score)
+        fallback_selection = SelecaoFonteCalorias(
+            fonte_escolhida=fallback.fonte,
+            confianca=fallback.confianca,
+            justificativa="Selecao deterministica por completude e confianca dos macros.",
+            agente_seletor_acionado=False,
+        )
+        warnings = [warning] if warning else []
+        return fallback, fallback_selection, warnings
+
+    def _selecionar_com_agente(
+        self,
+        *,
+        candidates: list[_FonteCaloriasCandidate],
+        food_query: str,
+        grams: float,
+        idioma: str,
+    ) -> SelecaoFonteCalorias | None:
+        system_prompt = (
+            "Voce e um agente seletor de confianca nutricional. "
+            "Recebera resultados de duas fontes e deve escolher a fonte mais coerente. "
+            "Retorne somente JSON valido sem markdown."
+        )
+        payload = {"consulta": food_query, "gramas": grams, "idioma": idioma, "candidatos": [c.to_dict() for c in candidates]}
+        user_prompt = (
+            "Escolha a melhor fonte considerando coerencia do item, completude dos macros e confianca.\n"
+            "Retorne JSON com chaves: fonte_escolhida, confianca, justificativa.\n\n"
+            f"Entrada:\n{payload}"
+        )
+        try:
+            response = self._client.generate_json_from_text(
+                model=self._settings.openai_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        except (APIConnectionError, APIError, ValueError):
+            self._logger.exception(
+                "calorias_texto.selector_agent.failed",
+                extra={"food_query": food_query, "candidates": len(candidates)},
+            )
+            return None
+
+        selected_source = _normalize_source_name(
+            response.get("fonte_escolhida") or response.get("source") or response.get("selected_source")
+        )
+        if selected_source is None:
+            return None
+
+        return SelecaoFonteCalorias(
+            fonte_escolhida=selected_source,
+            confianca=_to_optional_float(response.get("confianca") or response.get("confidence")),
+            justificativa=_to_optional_str(response.get("justificativa") or response.get("justification") or response.get("motivo")),
+            agente_seletor_acionado=True,
+        )
+
+    def _calcular_via_llm(
+        self,
+        *,
+        contexto: str,
+        idioma: str,
+        texto_value: str,
+    ) -> dict[str, Any]:
+        system_prompt = (
+            "Voce e um agente nutricional que estima macros por descricao textual de alimentos. "
+            "Responda somente JSON valido, sem markdown."
+        )
+        user_prompt = (
+            f"Contexto: {contexto}. Idioma: {idioma}. "
+            "Interprete o texto e retorne um JSON com as chaves: "
+            "itens, totais, warnings. "
+            "Cada item deve ter: descricao_original, alimento, quantidade_texto, calorias_kcal, "
+            "proteina_g, carboidratos_g, lipidios_g, confianca, observacoes. "
+            "A chave totais deve ter: calorias_kcal, proteina_g, carboidratos_g, lipidios_g. "
+            "Use numeros (sem unidade) sempre que possivel."
+            f"\n\nTexto do usuario:\n{texto_value}"
+        )
+
+        try:
+            return self._client.generate_json_from_text(
+                model=self._settings.openai_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        except APIConnectionError as exc:
+            self._logger.exception("Falha de conexao com a OpenAI em calorias_texto")
+            raise ServiceError("Falha de conexao com a OpenAI.", status_code=502) from exc
+        except APIError as exc:
+            self._logger.exception("Erro da OpenAI em calorias_texto")
+            raise ServiceError(f"Erro da OpenAI: {exc.__class__.__name__}", status_code=502) from exc
+        except ValueError as exc:
+            self._logger.exception("Resposta da OpenAI nao retornou JSON valido em calorias_texto")
+            raise ServiceError("Resposta da OpenAI em formato invalido para calculo de calorias.", status_code=502) from exc
 
     def _ensure_openai_api_key(self) -> None:
         if not self._settings.openai_api_key.strip():
@@ -215,3 +554,165 @@ def _confianca_media_itens(itens: list[ItemCaloriasTexto]) -> float | None:
         return None
     return round(sum(confiancas) / len(confiancas), 4)
 
+
+def _select_best_open_food_facts_product(products: list[OpenFoodFactsProduct]) -> OpenFoodFactsProduct | None:
+    if not products:
+        return None
+    return max(products, key=_open_food_facts_product_score)
+
+
+def _open_food_facts_product_score(product: OpenFoodFactsProduct) -> float:
+    adjusted = product.ajustado
+    score = 0.0
+    if adjusted.energia_kcal is not None:
+        score += 3.0
+    if adjusted.proteina_g is not None:
+        score += 1.0
+    if adjusted.carboidratos_g is not None:
+        score += 1.0
+    if adjusted.lipidios_g is not None:
+        score += 1.0
+    if product.nome_produto:
+        score += 0.2
+    if product.marcas:
+        score += 0.1
+    return score
+
+
+def _estimate_confidence(
+    *,
+    fonte: str,
+    calorias_kcal: float | None,
+    proteina_g: float | None,
+    carboidratos_g: float | None,
+    lipidios_g: float | None,
+) -> float:
+    filled = sum(value is not None for value in (calorias_kcal, proteina_g, carboidratos_g, lipidios_g))
+    score = 0.5 + (0.1 * filled)
+    if calorias_kcal is not None:
+        score += 0.15
+    if fonte == _FONTE_TACO:
+        score += 0.05
+    return round(min(score, 0.99), 4)
+
+
+def _candidate_score(candidate: _FonteCaloriasCandidate) -> float:
+    score = candidate.confianca
+    if candidate.calorias_kcal is not None:
+        score += 3.0
+    if candidate.proteina_g is not None:
+        score += 1.0
+    if candidate.carboidratos_g is not None:
+        score += 1.0
+    if candidate.lipidios_g is not None:
+        score += 1.0
+    if candidate.fonte == _FONTE_TACO:
+        score += 0.15
+    return score
+
+
+def _match_candidate_by_source(
+    candidates: list[_FonteCaloriasCandidate],
+    source: str | None,
+) -> _FonteCaloriasCandidate | None:
+    if source is None:
+        return None
+    for candidate in candidates:
+        if candidate.fonte == source:
+            return candidate
+    return None
+
+
+def _order_candidates(candidates: list[_FonteCaloriasCandidate]) -> list[_FonteCaloriasCandidate]:
+    order = {_FONTE_TACO: 0, _FONTE_OPEN_FOOD_FACTS: 1}
+    return sorted(candidates, key=lambda candidate: order.get(candidate.fonte, 99))
+
+
+def _normalize_source_name(value: Any) -> str | None:
+    raw = _to_optional_str(value)
+    if raw is None:
+        return None
+    normalized = raw.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"tabela_taco_online", "taco", "taco_online"}:
+        return _FONTE_TACO
+    if normalized in {"open_food_facts", "off", "openfoodfacts"}:
+        return _FONTE_OPEN_FOOD_FACTS
+    return None
+
+
+def _extract_single_food_request(text: str) -> tuple[str, float] | None:
+    if ";" in text or "\n" in text:
+        return None
+    food_query = _extract_single_food_query(text)
+    if not food_query:
+        return None
+    if _looks_like_multi_food_query(food_query):
+        return None
+    grams = _extract_grams(text)
+    return food_query, grams
+
+
+def _extract_single_food_query(prompt: str) -> str | None:
+    patterns = (
+        r"^\s*\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\s+de\s+(.+)$",
+        r"quantas?\s+calorias\s+tem\s+(?:o|a|os|as|um|uma)?\s*(.+)",
+        r"(?:calorias|macros?)\s+(?:de|do|da|dos|das)\s+(.+)",
+        r"(?:valor calorico)\s+(?:de|do|da)\s+(.+)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, prompt, flags=re.IGNORECASE)
+        if match:
+            return _cleanup_food_phrase(match.group(1))
+
+    cleaned = _cleanup_food_phrase(prompt.strip(" ?!."))
+    if len(cleaned.split()) <= 5 and not re.search(r"\bcaloria|macro|proteina|carbo|gordura", cleaned.lower()):
+        return cleaned
+    return None
+
+
+def _cleanup_food_phrase(value: str) -> str:
+    cleaned = re.sub(r"\b(em|para)\s+\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", "", value, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(de|do|da|dos|das)\s+", "", cleaned, flags=re.IGNORECASE)
+    return " ".join(cleaned.split()).strip(" ,.;")
+
+
+def _extract_grams(prompt: str) -> float:
+    match_kg = re.search(r"(\d{1,3}(?:[.,]\d+)?)\s*kg\b", prompt, flags=re.IGNORECASE)
+    if match_kg:
+        return round(float(match_kg.group(1).replace(",", ".")) * 1000.0, 4)
+    match_g = re.search(r"(\d{1,4}(?:[.,]\d+)?)\s*g\b", prompt, flags=re.IGNORECASE)
+    if match_g:
+        return round(float(match_g.group(1).replace(",", ".")), 4)
+    match_l = re.search(r"(\d{1,3}(?:[.,]\d+)?)\s*l\b", prompt, flags=re.IGNORECASE)
+    if match_l:
+        return round(float(match_l.group(1).replace(",", ".")) * 1000.0, 4)
+    match_ml = re.search(r"(\d{1,4}(?:[.,]\d+)?)\s*ml\b", prompt, flags=re.IGNORECASE)
+    if match_ml:
+        return round(float(match_ml.group(1).replace(",", ".")), 4)
+    return 100.0
+
+
+def _contains_explicit_grams(prompt: str) -> bool:
+    return bool(re.search(r"\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", prompt, flags=re.IGNORECASE))
+
+
+def _format_grams_text(grams: float) -> str:
+    normalized = round(grams, 4)
+    if float(normalized).is_integer():
+        return f"{int(normalized)} g"
+    return f"{normalized} g"
+
+
+def _looks_like_multi_food_query(food_query: str) -> bool:
+    return bool(re.search(r"\be\b|,|\+|\bcom\b|\bjunto\b", food_query, flags=re.IGNORECASE))
+
+
+def _has_core_macros(
+    *,
+    energy: float | None,
+    protein: float | None,
+    carbs: float | None,
+    fat: float | None,
+) -> bool:
+    return any(value is not None for value in (energy, protein, carbs, fat))

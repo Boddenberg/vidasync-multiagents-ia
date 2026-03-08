@@ -15,6 +15,9 @@ from vidasync_multiagents_ia.schemas import (
     ResultadoIdentificacaoFoto,
     ResultadoPorcoesFoto,
 )
+from vidasync_multiagents_ia.services.image_reference_resolver import (
+    resolve_image_reference_to_public_url,
+)
 
 
 class FotoAlimentosService:
@@ -35,17 +38,18 @@ class FotoAlimentosService:
     ) -> IdentificacaoFotoResponse:
         # /**** Agente 1: valida se a imagem e de refeicao e se possui qualidade minima. ****/
         self._ensure_openai_api_key()
+        imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
         self._logger.info(
             "foto_alimentos.identificacao.started",
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "imagem_url": imagem_url,
+                "imagem_url": imagem_url_resolvida,
                 "modelo": self._settings.openai_model,
             },
         )
         identificacao_raw = self._executar_agente_identificacao(
-            imagem_url=imagem_url,
+            imagem_url=imagem_url_resolvida,
             contexto=contexto,
             idioma=idioma,
         )
@@ -54,7 +58,7 @@ class FotoAlimentosService:
             "foto_alimentos.identificacao.completed",
             extra={
                 "contexto": contexto,
-                "imagem_url": imagem_url,
+                "imagem_url": imagem_url_resolvida,
                 "eh_comida": identificacao.eh_comida,
                 "qualidade_adequada": identificacao.qualidade_adequada,
                 "confianca": identificacao.confianca,
@@ -63,7 +67,7 @@ class FotoAlimentosService:
 
         return IdentificacaoFotoResponse(
             contexto=contexto,
-            imagem_url=imagem_url,
+            imagem_url=imagem_url_resolvida,
             resultado_identificacao=identificacao,
             agente=ExecucaoAgenteFoto(
                 contexto="identificar_se_e_foto_de_comida",
@@ -85,17 +89,18 @@ class FotoAlimentosService:
     ) -> EstimativaPorcoesFotoResponse:
         # /**** Agente 2: estima porcoes e gramas por item visualizado na imagem. ****/
         self._ensure_openai_api_key()
+        imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
         self._logger.info(
             "foto_alimentos.porcoes.started",
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "imagem_url": imagem_url,
+                "imagem_url": imagem_url_resolvida,
                 "modelo": self._settings.openai_model,
             },
         )
         porcoes_raw = self._executar_agente_porcoes(
-            imagem_url=imagem_url,
+            imagem_url=imagem_url_resolvida,
             contexto=contexto,
             idioma=idioma,
         )
@@ -105,7 +110,7 @@ class FotoAlimentosService:
             "foto_alimentos.porcoes.completed",
             extra={
                 "contexto": contexto,
-                "imagem_url": imagem_url,
+                "imagem_url": imagem_url_resolvida,
                 "itens": len(porcoes.itens),
                 "confianca_media": confianca_media,
             },
@@ -113,7 +118,7 @@ class FotoAlimentosService:
 
         return EstimativaPorcoesFotoResponse(
             contexto=contexto,
-            imagem_url=imagem_url,
+            imagem_url=imagem_url_resolvida,
             resultado_porcoes=porcoes,
             agente=ExecucaoAgenteFoto(
                 contexto="estimar_porcoes_do_prato",
@@ -130,6 +135,13 @@ class FotoAlimentosService:
         api_key = self._settings.openai_api_key.strip()
         if not api_key:
             raise ServiceError("OPENAI_API_KEY nao configurada no ambiente.", status_code=500)
+
+    def _resolve_imagem_url(self, imagem_url: str) -> str:
+        return resolve_image_reference_to_public_url(
+            imagem_url,
+            supabase_url=self._settings.supabase_url,
+            public_bucket=self._settings.supabase_storage_public_bucket,
+        )
 
     def _executar_agente_identificacao(
         self,

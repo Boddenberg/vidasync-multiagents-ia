@@ -6,7 +6,9 @@ from vidasync_multiagents_ia.schemas.audio_transcricao import (
 from vidasync_multiagents_ia.schemas.calorias_texto import (
     AgenteCaloriasTexto,
     CaloriasTextoResponse,
+    FonteCaloriasConsulta,
     ItemCaloriasTexto,
+    SelecaoFonteCalorias,
     TotaisCaloriasTexto,
 )
 from vidasync_multiagents_ia.schemas.frase_porcoes import (
@@ -50,6 +52,12 @@ from vidasync_multiagents_ia.schemas.openai_chat import (
     IntencaoChatNome,
     OpenAIChatRequest,
     OpenAIChatResponse,
+)
+from vidasync_multiagents_ia.schemas.open_food_facts import (
+    OpenFoodFactsNutrients,
+    OpenFoodFactsProduct,
+    OpenFoodFactsSearchRequest,
+    OpenFoodFactsSearchResponse,
 )
 from vidasync_multiagents_ia.schemas.orchestrator import (
     OrchestrateRequest,
@@ -115,7 +123,9 @@ __all__ = [
     "AgenteCaloriasTexto",
     "AgenteTranscricaoAudio",
     "CaloriasTextoResponse",
+    "FonteCaloriasConsulta",
     "ItemCaloriasTexto",
+    "SelecaoFonteCalorias",
     "AudioTranscricaoResponse",
     "AgentePorcoesTexto",
     "FrasePorcoesRequest",
@@ -128,6 +138,10 @@ __all__ = [
     "ImagemTextoResponse",
     "OpenAIChatRequest",
     "OpenAIChatResponse",
+    "OpenFoodFactsNutrients",
+    "OpenFoodFactsProduct",
+    "OpenFoodFactsSearchRequest",
+    "OpenFoodFactsSearchResponse",
     "ChatMemoriaEstado",
     "ChatPlanoAnexoInput",
     "ChatRefeicaoAnexoInput",

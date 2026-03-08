@@ -12,6 +12,9 @@ from vidasync_multiagents_ia.schemas import (
     ImagemTextoItemResponse,
     ImagemTextoResponse,
 )
+from vidasync_multiagents_ia.services.image_reference_resolver import (
+    resolve_image_reference_to_public_url,
+)
 
 
 class ImagemTextoService:
@@ -34,17 +37,18 @@ class ImagemTextoService:
         self._ensure_openai_api_key()
         if not imagem_urls:
             raise ServiceError("Campo 'imagem_urls' e obrigatorio.", status_code=400)
+        imagem_urls_resolvidas = [self._resolve_imagem_url(url) for url in imagem_urls]
 
         self._logger.info(
             "imagem_texto.started",
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "total_imagens": len(imagem_urls),
+                "total_imagens": len(imagem_urls_resolvidas),
                 "modelo": self._settings.openai_model,
             },
         )
-        max_workers = min(6, len(imagem_urls))
+        max_workers = min(6, len(imagem_urls_resolvidas))
         system_prompt = (
             "Voce e um agente OCR para transcricao de texto em imagens. "
             "Retorne apenas o texto extraido, sem comentario adicional."
@@ -65,7 +69,7 @@ class ImagemTextoService:
                         system_prompt=system_prompt,
                         user_prompt=user_prompt,
                     ),
-                    imagem_urls,
+                    imagem_urls_resolvidas,
                 )
             )
 
@@ -76,7 +80,7 @@ class ImagemTextoService:
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "total_imagens": len(imagem_urls),
+                "total_imagens": len(imagem_urls_resolvidas),
                 "total_sucesso": total_sucesso,
                 "total_erro": total_erro,
                 "max_workers": max_workers,
@@ -86,7 +90,7 @@ class ImagemTextoService:
         return ImagemTextoResponse(
             contexto=contexto,
             idioma=idioma,
-            total_imagens=len(imagem_urls),
+            total_imagens=len(imagem_urls_resolvidas),
             resultados=resultados,
             agente=AgenteTranscricaoImagemTexto(
                 contexto="transcrever_texto_imagem",
@@ -94,7 +98,7 @@ class ImagemTextoService:
                 status="sucesso",
                 modelo=self._settings.openai_model,
                 modo_execucao="paralelo",
-                total_imagens=len(imagem_urls),
+                total_imagens=len(imagem_urls_resolvidas),
             ),
             extraido_em=datetime.now(timezone.utc),
         )
@@ -131,3 +135,10 @@ class ImagemTextoService:
     def _ensure_openai_api_key(self) -> None:
         if not self._settings.openai_api_key.strip():
             raise ServiceError("OPENAI_API_KEY nao configurada no ambiente.", status_code=500)
+
+    def _resolve_imagem_url(self, imagem_url: str) -> str:
+        return resolve_image_reference_to_public_url(
+            imagem_url,
+            supabase_url=self._settings.supabase_url,
+            public_bucket=self._settings.supabase_storage_public_bucket,
+        )

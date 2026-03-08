@@ -107,6 +107,7 @@ uvicorn vidasync_multiagents_ia.main:app --reload
 ### Integracoes Nutricionais
 - `POST /tbca/search`
 - `POST /taco-online/food`
+- `POST /open-food-facts/search`
 
 ### Pipelines Temporarios
 - `POST /agentes/pipeline-plano-imagem`
@@ -132,6 +133,21 @@ curl --request POST "http://127.0.0.1:8000/tbca/search" \
 curl --request POST "http://127.0.0.1:8000/taco-online/food" \
   --header "Content-Type: application/json" \
   --data "{\"consulta\":\"feijao carioca cru\",\"gramas\":100}"
+```
+
+### Open Food Facts (body)
+```bash
+curl --request POST "http://127.0.0.1:8000/open-food-facts/search" \
+  --header "Content-Type: application/json" \
+  --data "{\"consulta\":\"monster energy ultra\",\"gramas\":500,\"page\":1,\"page_size\":5}"
+```
+
+### Gerar catalogo local completo da TACO (lote)
+```bash
+python scripts/build_taco_catalog.py \
+  --input knowledge/banco.json \
+  --output knowledge/taco_catalog_full.json \
+  --delay-seconds 0.25
 ```
 
 ### OCR De Imagens

@@ -15,6 +15,9 @@ from vidasync_multiagents_ia.schemas import (
     PlanoTextoNormalizadoResponse,
     PlanoTextoNormalizadoSecao,
 )
+from vidasync_multiagents_ia.services.image_reference_resolver import (
+    resolve_image_reference_to_public_url,
+)
 
 
 class PlanoTextoNormalizadoService:
@@ -36,18 +39,19 @@ class PlanoTextoNormalizadoService:
         self._ensure_openai_api_key()
         if not imagem_urls:
             raise ServiceError("Campo 'imagem_urls' e obrigatorio.", status_code=400)
+        imagem_urls_resolvidas = [self._resolve_imagem_url(url) for url in imagem_urls]
 
         self._logger.info(
             "plano_texto_normalizado.imagens.started",
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "total_fontes": len(imagem_urls),
+                "total_fontes": len(imagem_urls_resolvidas),
                 "modelo": self._settings.openai_model,
             },
         )
 
-        max_workers = min(4, len(imagem_urls))
+        max_workers = min(4, len(imagem_urls_resolvidas))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             payloads = list(
                 executor.map(
@@ -56,7 +60,7 @@ class PlanoTextoNormalizadoService:
                         contexto=contexto,
                         idioma=idioma,
                     ),
-                    imagem_urls,
+                    imagem_urls_resolvidas,
                 )
             )
 
@@ -65,14 +69,14 @@ class PlanoTextoNormalizadoService:
             contexto=contexto,
             idioma=idioma,
             tipo_fonte="imagem",
-            total_fontes=len(imagem_urls),
+            total_fontes=len(imagem_urls_resolvidas),
         )
         self._logger.info(
             "plano_texto_normalizado.imagens.completed",
             extra={
                 "contexto": contexto,
                 "idioma": idioma,
-                "total_fontes": len(imagem_urls),
+                "total_fontes": len(imagem_urls_resolvidas),
                 "secoes": len(response.secoes),
                 "texto_chars": len(response.texto_normalizado),
             },
@@ -354,6 +358,13 @@ class PlanoTextoNormalizadoService:
     def _ensure_openai_api_key(self) -> None:
         if not self._settings.openai_api_key.strip():
             raise ServiceError("OPENAI_API_KEY nao configurada no ambiente.", status_code=500)
+
+    def _resolve_imagem_url(self, imagem_url: str) -> str:
+        return resolve_image_reference_to_public_url(
+            imagem_url,
+            supabase_url=self._settings.supabase_url,
+            public_bucket=self._settings.supabase_storage_public_bucket,
+        )
 
 
 def _build_system_prompt() -> str:

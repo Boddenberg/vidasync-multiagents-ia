@@ -30,6 +30,24 @@ class AgenteCaloriasTexto(BaseModel):
     confianca_media: float | None = None
 
 
+class FonteCaloriasConsulta(BaseModel):
+    fonte: str
+    item: str | None = None
+    calorias_kcal: float | None = None
+    proteina_g: float | None = None
+    carboidratos_g: float | None = None
+    lipidios_g: float | None = None
+    confianca: float | None = None
+    detalhes: str | None = None
+
+
+class SelecaoFonteCalorias(BaseModel):
+    fonte_escolhida: str | None = None
+    confianca: float | None = None
+    justificativa: str | None = None
+    agente_seletor_acionado: bool = False
+
+
 class CaloriasTextoResponse(BaseModel):
     contexto: str
     idioma: str
@@ -37,6 +55,7 @@ class CaloriasTextoResponse(BaseModel):
     itens: list[ItemCaloriasTexto] = Field(default_factory=list)
     totais: TotaisCaloriasTexto
     warnings: list[str] = Field(default_factory=list)
+    fontes_consultadas: list[FonteCaloriasConsulta] = Field(default_factory=list)
+    selecao_fonte: SelecaoFonteCalorias | None = None
     agente: AgenteCaloriasTexto
     extraido_em: datetime
-

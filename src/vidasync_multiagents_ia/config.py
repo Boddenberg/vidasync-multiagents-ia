@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     audio_recommended_max_seconds: int = 45
     pdf_max_upload_bytes: int = 20 * 1024 * 1024
     supabase_url: str = ""
+    supabase_storage_public_bucket: str = "pipeline-inputs"
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     chroma_persist_dir: str = ".chroma"

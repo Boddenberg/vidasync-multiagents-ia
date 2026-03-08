@@ -5,6 +5,7 @@ from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimento
 class _FakeOpenAIClient:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.image_urls: list[str] = []
 
     def generate_json_from_image(
         self,
@@ -15,6 +16,7 @@ class _FakeOpenAIClient:
         image_url: str,
     ) -> dict:
         self.calls.append(system_prompt)
+        self.image_urls.append(image_url)
         if "triagem de imagens de refeicao" in system_prompt:
             return {
                 "contexto": "identificar_fotos",
@@ -75,3 +77,27 @@ def test_foto_alimentos_service_estimativa_por_agente() -> None:
     assert len(result.resultado_porcoes.itens) == 2
     assert result.resultado_porcoes.itens[0].consulta_canonica == "arroz branco cozido"
     assert result.agente.nome_agente == "agente_estimativa_porcoes"
+
+
+def test_foto_alimentos_service_resolve_storage_key_sem_token() -> None:
+    settings = Settings(
+        openai_api_key="test-key",
+        openai_model="gpt-4o-mini",
+        supabase_url="https://project.supabase.co",
+        supabase_storage_public_bucket="pipeline-inputs",
+    )
+    fake_client = _FakeOpenAIClient()
+    service = FotoAlimentosService(settings=settings, client=fake_client)  # type: ignore[arg-type]
+
+    result = service.identificar_se_e_foto_de_comida(
+        imagem_url="file/abc/2026-03-08/imagem.jpg",
+        contexto="identificar_fotos",
+        idioma="pt-BR",
+    )
+
+    expected_url = (
+        "https://project.supabase.co/storage/v1/object/public/"
+        "pipeline-inputs/file/abc/2026-03-08/imagem.jpg"
+    )
+    assert fake_client.image_urls[-1] == expected_url
+    assert result.imagem_url == expected_url

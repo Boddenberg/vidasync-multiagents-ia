@@ -1,9 +1,6 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import (
     AgenteCaloriasTexto,
     CaloriasTextoResponse,
@@ -153,15 +150,14 @@ def test_pipeline_foto_calorias_service_sucesso() -> None:
     assert "estimativa nutricional aproximada" in result.warnings
 
 
-def test_pipeline_foto_calorias_service_erro_quando_nao_e_comida() -> None:
+def test_pipeline_foto_calorias_service_tenta_mesmo_quando_nao_e_comida() -> None:
     service = FotoCaloriasPipelineTesteService(
         settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
         foto_service=_FakeFotoAlimentosService(eh_comida=False),  # type: ignore[arg-type]
         calorias_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
     )
 
-    with pytest.raises(ServiceError) as exc:
-        service.executar_pipeline(imagem_url="https://example.com/paisagem.jpg")
+    result = service.executar_pipeline(imagem_url="https://example.com/paisagem.jpg")
 
-    assert exc.value.status_code == 422
-    assert exc.value.message == "Imagem nao foi classificada como comida."
+    assert result.agente.status == "parcial"
+    assert "Imagem nao foi classificada como comida; tentativa de estimativa forcada no pipeline." in result.warnings

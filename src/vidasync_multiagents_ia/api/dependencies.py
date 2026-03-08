@@ -9,6 +9,7 @@ from vidasync_multiagents_ia.services import (
     FotoAlimentosService,
     FrasePorcoesService,
     ImagemTextoService,
+    OpenFoodFactsService,
     OpenAIChatService,
     OrchestratorService,
     PlanoImagemPipelineTesteService,
@@ -86,6 +87,11 @@ def get_tbca_service() -> TBCAService:
 @lru_cache(maxsize=1)
 def get_taco_online_service() -> TacoOnlineService:
     return TacoOnlineService()
+
+
+@lru_cache(maxsize=1)
+def get_open_food_facts_service() -> OpenFoodFactsService:
+    return OpenFoodFactsService()
 
 
 @lru_cache(maxsize=1)

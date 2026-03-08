@@ -10,7 +10,7 @@ from vidasync_multiagents_ia.observability import (
     record_chat_fallback,
     record_chat_rag_usage,
 )
-from vidasync_multiagents_ia.schemas import IntencaoChatDetectada, TacoOnlineFoodResponse, TBCASearchResponse
+from vidasync_multiagents_ia.schemas import CaloriasTextoResponse, IntencaoChatDetectada
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
 from vidasync_multiagents_ia.services.chat_tools import (
     ChatToolExecutionInput,
@@ -60,6 +60,7 @@ class ChatCaloriasMacrosFlowService:
             self._tool_executor = tool_executor
         else:
             calorias_base = calorias_service or CaloriasTextoService(settings=settings)
+            self._calorias_service = calorias_base
             shared_client = OpenAIClient(
                 api_key=settings.openai_api_key,
                 timeout_seconds=settings.openai_timeout_seconds,
@@ -69,6 +70,8 @@ class ChatCaloriasMacrosFlowService:
                 client=shared_client,
                 calorias_service=calorias_base,
             )
+        if tool_executor is not None:
+            self._calorias_service = calorias_service or CaloriasTextoService(settings=settings)
         self._tbca_service = tbca_service or TBCAService()
         self._taco_online_service = taco_online_service or TacoOnlineService()
         self._logger = logging.getLogger(__name__)
@@ -197,36 +200,25 @@ class ChatCaloriasMacrosFlowService:
         analysis: dict[str, Any],
     ) -> ChatCaloriasMacrosFlowOutput | None:
         try:
-            tbca = self._tbca_service.search(query=food_query, grams=grams)
+            texto_normalizado = f"{_fmt_quantity(grams)} g de {food_query}"
+            calorias = self._calorias_service.calcular(
+                texto=texto_normalizado,
+                contexto="calcular_calorias_texto",
+                idioma="pt-BR",
+            )
             if _has_core_macros(
-                energy=tbca.ajustado.energia_kcal,
-                protein=tbca.ajustado.proteina_g,
-                carbs=tbca.ajustado.carboidratos_g,
-                fat=tbca.ajustado.lipidios_g,
+                energy=calorias.totais.calorias_kcal,
+                protein=calorias.totais.proteina_g,
+                carbs=calorias.totais.carboidratos_g,
+                fat=calorias.totais.lipidios_g,
             ):
-                return _build_output_from_tbca(tbca, analysis=analysis)
+                return _build_output_from_calorias_structured(calorias, analysis=analysis)
             self._logger.info(
-                "chat_calorias_macros_flow.tbca_partial_without_core_metrics",
+                "chat_calorias_macros_flow.dual_source_partial_without_core_metrics",
                 extra={"food_query": food_query},
             )
         except ServiceError:
-            self._logger.info("chat_calorias_macros_flow.tbca_not_available", extra={"food_query": food_query})
-
-        try:
-            taco = self._taco_online_service.get_food(query=food_query, grams=grams)
-            if _has_core_macros(
-                energy=taco.ajustado.energia_kcal,
-                protein=taco.ajustado.proteina_g,
-                carbs=taco.ajustado.carboidratos_g,
-                fat=taco.ajustado.lipidios_g,
-            ):
-                return _build_output_from_taco(taco, analysis=analysis)
-            self._logger.info(
-                "chat_calorias_macros_flow.taco_partial_without_core_metrics",
-                extra={"food_query": food_query},
-            )
-        except ServiceError:
-            self._logger.info("chat_calorias_macros_flow.taco_not_available", extra={"food_query": food_query})
+            self._logger.info("chat_calorias_macros_flow.dual_source_not_available", extra={"food_query": food_query})
         return None
 
 
@@ -292,65 +284,44 @@ def _has_core_macros(*, energy: float | None, protein: float | None, carbs: floa
     return any(value is not None for value in (energy, protein, carbs, fat))
 
 
-def _build_output_from_tbca(
-    data: TBCASearchResponse,
+def _build_output_from_calorias_structured(
+    data: CaloriasTextoResponse,
     *,
     analysis: dict[str, Any],
 ) -> ChatCaloriasMacrosFlowOutput:
+    totais = data.totais
+    fonte = (data.selecao_fonte.fonte_escolhida if data.selecao_fonte else None) or "n/d"
+    itens = []
+    for item in data.fontes_consultadas:
+        itens.append(
+            f"- {item.fonte}: {_fmt_num(item.calorias_kcal)} kcal | "
+            f"P {_fmt_num(item.proteina_g)} g | C {_fmt_num(item.carboidratos_g)} g | G {_fmt_num(item.lipidios_g)} g"
+        )
+    fontes_texto = "\n".join(itens) if itens else "- n/d"
+
     response = (
-        "Resultado por base estruturada (TBCA):\n"
-        f"Alimento: {data.alimento_selecionado.nome}\n"
-        f"Quantidade considerada: {data.gramas} g\n"
-        f"Por 100g -> Energia: {_fmt_num(data.por_100g.energia_kcal)} kcal | "
-        f"Proteina: {_fmt_num(data.por_100g.proteina_g)} g | "
-        f"Carboidratos: {_fmt_num(data.por_100g.carboidratos_g)} g | "
-        f"Lipidios: {_fmt_num(data.por_100g.lipidios_g)} g\n"
-        f"Para {data.gramas}g -> Energia: {_fmt_num(data.ajustado.energia_kcal)} kcal | "
-        f"Proteina: {_fmt_num(data.ajustado.proteina_g)} g | "
-        f"Carboidratos: {_fmt_num(data.ajustado.carboidratos_g)} g | "
-        f"Lipidios: {_fmt_num(data.ajustado.lipidios_g)} g"
+        "Resultado por base estruturada (TACO + Open Food Facts):\n"
+        f"Alimento: {data.itens[0].alimento if data.itens else data.texto}\n"
+        f"Quantidade considerada: {data.itens[0].quantidade_texto or '100 g'}\n"
+        f"Fonte selecionada: {fonte}\n"
+        f"Totais -> Energia: {_fmt_num(totais.calorias_kcal)} kcal | "
+        f"Proteina: {_fmt_num(totais.proteina_g)} g | "
+        f"Carboidratos: {_fmt_num(totais.carboidratos_g)} g | "
+        f"Lipidios: {_fmt_num(totais.lipidios_g)} g\n"
+        f"Candidatos avaliados:\n{fontes_texto}"
     )
     return ChatCaloriasMacrosFlowOutput(
         resposta=response,
+        warnings=list(data.warnings),
+        precisa_revisao=bool(data.warnings),
         metadados={
             "flow": "calorias_macros_hibrido_v1",
-            "route": "base_estruturada_tbca",
+            "route": "base_estruturada_dual_taco_open_food_facts",
             "analysis": analysis,
-            "fonte": "TBCA",
+            "fonte": fonte,
             "structured_result": data.model_dump(exclude_none=True),
         },
-        handler_override="handler_base_estruturada_calorias_tbca",
-    )
-
-
-def _build_output_from_taco(
-    data: TacoOnlineFoodResponse,
-    *,
-    analysis: dict[str, Any],
-) -> ChatCaloriasMacrosFlowOutput:
-    response = (
-        "Resultado por base estruturada (TACO Online):\n"
-        f"Alimento: {data.nome_alimento or data.slug or 'alimento'}\n"
-        f"Quantidade considerada: {data.gramas} g\n"
-        f"Por 100g -> Energia: {_fmt_num(data.por_100g.energia_kcal)} kcal | "
-        f"Proteina: {_fmt_num(data.por_100g.proteina_g)} g | "
-        f"Carboidratos: {_fmt_num(data.por_100g.carboidratos_g)} g | "
-        f"Lipidios: {_fmt_num(data.por_100g.lipidios_g)} g\n"
-        f"Para {data.gramas}g -> Energia: {_fmt_num(data.ajustado.energia_kcal)} kcal | "
-        f"Proteina: {_fmt_num(data.ajustado.proteina_g)} g | "
-        f"Carboidratos: {_fmt_num(data.ajustado.carboidratos_g)} g | "
-        f"Lipidios: {_fmt_num(data.ajustado.lipidios_g)} g"
-    )
-    return ChatCaloriasMacrosFlowOutput(
-        resposta=response,
-        metadados={
-            "flow": "calorias_macros_hibrido_v1",
-            "route": "base_estruturada_taco",
-            "analysis": analysis,
-            "fonte": "TABELA_TACO_ONLINE",
-            "structured_result": data.model_dump(exclude_none=True),
-        },
-        handler_override="handler_base_estruturada_calorias_taco",
+        handler_override="handler_base_estruturada_calorias_dual_fontes",
     )
 
 
@@ -381,3 +352,10 @@ def _fmt_num(value: float | None) -> str:
     if value is None:
         return "n/d"
     return str(round(value, 2))
+
+
+def _fmt_quantity(value: float) -> str:
+    normalized = round(value, 4)
+    if float(normalized).is_integer():
+        return str(int(normalized))
+    return str(normalized)

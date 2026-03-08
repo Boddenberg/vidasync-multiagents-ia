@@ -100,7 +100,7 @@ class FotoCaloriasPipelineTesteService:
         return FotoCaloriasPipelineTesteResponse(
             contexto=contexto,
             idioma=idioma,
-            imagem_url=imagem_url,
+            imagem_url=identificacao_foto.imagem_url,
             texto_calorias=texto_calorias,
             identificacao_foto=identificacao_foto,
             estimativa_porcoes=estimativa_porcoes,
@@ -130,8 +130,6 @@ class FotoCaloriasPipelineTesteService:
             contexto="identificar_fotos",
             idioma=idioma,
         )
-        if not response.resultado_identificacao.eh_comida:
-            raise ServiceError("Imagem nao foi classificada como comida.", status_code=422)
         return response
 
     def _executar_estimativa_porcoes(self, *, imagem_url: str, idioma: str) -> EstimativaPorcoesFotoResponse:
@@ -177,6 +175,8 @@ def _build_pipeline_warnings(
     warnings: list[str] = []
 
     identificacao = identificacao_foto.resultado_identificacao
+    if not identificacao.eh_comida:
+        warnings.append("Imagem nao foi classificada como comida; tentativa de estimativa forcada no pipeline.")
     if not identificacao.qualidade_adequada:
         warnings.append("Imagem com qualidade inadequada para analise confiavel.")
     if identificacao.confianca is not None and identificacao.confianca < 0.75:
