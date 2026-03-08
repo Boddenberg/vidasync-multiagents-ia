@@ -1,4 +1,4 @@
-﻿[project]
+[project]
 name = "vidasync-multiagents-ia"
 version = "0.1.0"
 description = "Multi-agent orchestrator for VidaSync with LangGraph, LangChain, and RAG"
@@ -9,7 +9,9 @@ authors = [
 ]
 dependencies = [
   "fastapi>=0.116.0",
+  "python-multipart>=0.0.20",
   "uvicorn[standard]>=0.35.0",
+  "openai>=1.66.0",
   "pydantic-settings>=2.10.0",
   "langchain>=0.3.27",
   "langgraph>=0.6.7",

@@ -1,4 +1,4 @@
-﻿from vidasync_multiagents_ia.state import OrchestratorState
+from vidasync_multiagents_ia.state import OrchestratorState
 
 
 def route_agent(state: OrchestratorState) -> OrchestratorState:

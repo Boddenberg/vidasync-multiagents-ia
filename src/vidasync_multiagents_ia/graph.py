@@ -1,4 +1,4 @@
-﻿from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph
 
 from vidasync_multiagents_ia.agents.executor import executor_agent
 from vidasync_multiagents_ia.agents.planner import planner_agent

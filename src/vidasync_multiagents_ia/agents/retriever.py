@@ -1,4 +1,4 @@
-﻿from vidasync_multiagents_ia.rag.vector_store import retrieve_context
+from vidasync_multiagents_ia.rag.vector_store import retrieve_context
 from vidasync_multiagents_ia.state import OrchestratorState
 
 

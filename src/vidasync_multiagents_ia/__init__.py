@@ -1,1 +1,1 @@
-﻿"""VidaSync multi-agent orchestrator package."""
+"""VidaSync multi-agent orchestrator package."""
