@@ -1,0 +1,37 @@
+from vidasync_multiagents_ia.observability.http_logging import log_request_response
+from vidasync_multiagents_ia.observability.logging_setup import setup_logging
+from vidasync_multiagents_ia.observability.metrics import (
+    record_ai_router_request,
+    record_ai_router_timeout,
+    record_chat_fallback,
+    record_chat_flow_execution,
+    record_chat_rag_usage,
+    record_chat_stage_duration,
+    record_chat_timeout,
+    record_chat_tool_execution,
+    record_chat_tool_failure,
+    record_external_request,
+    record_external_timeout,
+    record_http_request,
+    record_http_timeout,
+    render_metrics_prometheus,
+)
+
+__all__ = [
+    "setup_logging",
+    "log_request_response",
+    "record_http_request",
+    "record_http_timeout",
+    "record_chat_flow_execution",
+    "record_chat_stage_duration",
+    "record_chat_timeout",
+    "record_chat_tool_execution",
+    "record_chat_tool_failure",
+    "record_chat_fallback",
+    "record_chat_rag_usage",
+    "record_ai_router_request",
+    "record_ai_router_timeout",
+    "record_external_request",
+    "record_external_timeout",
+    "render_metrics_prometheus",
+]
