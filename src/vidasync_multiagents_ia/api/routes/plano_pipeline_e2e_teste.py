@@ -11,7 +11,7 @@ from vidasync_multiagents_ia.schemas import (
 )
 from vidasync_multiagents_ia.services import PlanoPipelineE2ETesteService
 
-router = APIRouter(prefix="/agentes/debug-local", tags=["agentes-debug-local"])
+router = APIRouter(prefix="/agentes", tags=["agentes-pipeline"])
 
 
 @router.post("/pipeline-plano-e2e-temporario", response_model=PlanoPipelineE2ETesteResponse)

@@ -106,7 +106,7 @@ def test_plano_imagem_pipeline_teste_route() -> None:
 
     try:
         response = client.post(
-            "/agentes/debug-local/pipeline-plano-imagem",
+            "/agentes/pipeline-plano-imagem",
             json={
                 "contexto": "pipeline_teste_plano_imagem",
                 "idioma": "pt-BR",

@@ -5,6 +5,7 @@ from vidasync_multiagents_ia.services import (
     AIRouterService,
     CaloriasTextoService,
     AudioTranscricaoService,
+    FotoCaloriasPipelineTesteService,
     FotoAlimentosService,
     FrasePorcoesService,
     ImagemTextoService,
@@ -90,6 +91,16 @@ def get_taco_online_service() -> TacoOnlineService:
 @lru_cache(maxsize=1)
 def get_foto_alimentos_service() -> FotoAlimentosService:
     return FotoAlimentosService(settings=get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_foto_calorias_pipeline_teste_service() -> FotoCaloriasPipelineTesteService:
+    settings = get_settings()
+    return FotoCaloriasPipelineTesteService(
+        settings=settings,
+        foto_service=get_foto_alimentos_service(),
+        calorias_service=get_calorias_texto_service(),
+    )
 
 
 @lru_cache(maxsize=1)

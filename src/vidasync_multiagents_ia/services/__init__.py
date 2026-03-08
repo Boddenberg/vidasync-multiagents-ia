@@ -42,6 +42,9 @@ from vidasync_multiagents_ia.services.chat_tools import (
     ChatToolName,
     build_chat_tool_executor,
 )
+from vidasync_multiagents_ia.services.foto_calorias_pipeline_teste_service import (
+    FotoCaloriasPipelineTesteService,
+)
 from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
 from vidasync_multiagents_ia.services.frase_porcoes_service import FrasePorcoesService
 from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
@@ -85,6 +88,7 @@ __all__ = [
     "ChatToolExecutionOutput",
     "ChatToolExecutor",
     "ChatToolName",
+    "FotoCaloriasPipelineTesteService",
     "FrasePorcoesService",
     "ImagemTextoService",
     "OpenAIChatService",

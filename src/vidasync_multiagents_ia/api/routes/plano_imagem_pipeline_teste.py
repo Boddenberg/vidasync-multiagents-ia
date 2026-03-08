@@ -7,7 +7,7 @@ from vidasync_multiagents_ia.schemas import (
 )
 from vidasync_multiagents_ia.services import PlanoImagemPipelineTesteService
 
-router = APIRouter(prefix="/agentes/debug-local", tags=["agentes-debug-local"])
+router = APIRouter(prefix="/agentes", tags=["agentes-pipeline"])
 
 
 @router.post("/pipeline-plano-imagem", response_model=PlanoImagemPipelineTesteResponse)

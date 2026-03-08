@@ -108,9 +108,10 @@ uvicorn vidasync_multiagents_ia.main:app --reload
 - `POST /tbca/search`
 - `POST /taco-online/food`
 
-### Rota Temporaria De Debug Local
-- `POST /agentes/debug-local/pipeline-plano-imagem`
-- `POST /agentes/debug-local/pipeline-plano-e2e-temporario`
+### Pipelines Temporarios
+- `POST /agentes/pipeline-plano-imagem`
+- `POST /agentes/pipeline-plano-e2e-temporario`
+- `POST /agentes/pipeline-foto-calorias`
 - Habilitada apenas quando `DEBUG_LOCAL_ROUTES_ENABLED=true`.
 
 ## Exemplos Rapidos (curl)
@@ -299,16 +300,23 @@ curl --request POST "http://127.0.0.1:8000/agentes/texto/estruturar-plano-alimen
 
 ### Pipeline Temporario (3 Etapas)
 ```bash
-curl --request POST "http://127.0.0.1:8000/agentes/debug-local/pipeline-plano-imagem" \
+curl --request POST "http://127.0.0.1:8000/agentes/pipeline-plano-imagem" \
   --header "Content-Type: application/json" \
   --data "{\"contexto\":\"pipeline_teste_plano_imagem\",\"idioma\":\"pt-BR\",\"imagem_url\":\"https://i.imgur.com/39gMaUj.png\",\"executar_ocr_literal\":true}"
 ```
 
 ### Pipeline E2E Temporario (imagem ou PDF)
 ```bash
-curl --request POST "http://127.0.0.1:8000/agentes/debug-local/pipeline-plano-e2e-temporario" \
+curl --request POST "http://127.0.0.1:8000/agentes/pipeline-plano-e2e-temporario" \
   --header "Content-Type: application/json" \
   --data "{\"contexto\":\"pipeline_teste_plano_e2e\",\"idioma\":\"pt-BR\",\"imagem_url\":\"https://i.imgur.com/39gMaUj.png\",\"executar_ocr_literal\":true}"
+```
+
+### Pipeline Foto -> Calorias (temporario)
+```bash
+curl --request POST "http://127.0.0.1:8000/agentes/pipeline-foto-calorias" \
+  --header "Content-Type: application/json" \
+  --data "{\"contexto\":\"pipeline_teste_foto_calorias\",\"idioma\":\"pt-BR\",\"image_key\":\"https://i.imgur.com/39gMaUj.png\"}"
 ```
 
 ## Observabilidade

@@ -33,6 +33,12 @@ from vidasync_multiagents_ia.schemas.foto_alimentos import (
     ResultadoIdentificacaoFoto,
     ResultadoPorcoesFoto,
 )
+from vidasync_multiagents_ia.schemas.foto_calorias_pipeline_teste import (
+    AgenteFotoCaloriasPipelineTeste,
+    FotoCaloriasPipelineTesteRequest,
+    FotoCaloriasPipelineTesteResponse,
+    FotoCaloriasPipelineTesteTemposMs,
+)
 from vidasync_multiagents_ia.schemas.openai_chat import (
     ChatMemoriaEstado,
     ChatPlanoAnexoInput,
@@ -154,6 +160,10 @@ __all__ = [
     "ItemAlimentoEstimado",
     "ResultadoIdentificacaoFoto",
     "ResultadoPorcoesFoto",
+    "AgenteFotoCaloriasPipelineTeste",
+    "FotoCaloriasPipelineTesteRequest",
+    "FotoCaloriasPipelineTesteResponse",
+    "FotoCaloriasPipelineTesteTemposMs",
     "OrchestrateRequest",
     "OrchestrateResponse",
     "AgenteTranscricaoPdf",

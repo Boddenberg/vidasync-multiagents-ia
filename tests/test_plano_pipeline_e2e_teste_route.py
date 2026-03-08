@@ -175,7 +175,7 @@ def test_pipeline_plano_e2e_temporario_route_json_imagem() -> None:
 
     try:
         response = client.post(
-            "/agentes/debug-local/pipeline-plano-e2e-temporario",
+            "/agentes/pipeline-plano-e2e-temporario",
             json={
                 "contexto": "pipeline_teste_plano_e2e",
                 "idioma": "pt-BR",
@@ -199,7 +199,7 @@ def test_pipeline_plano_e2e_temporario_route_multipart_pdf() -> None:
 
     try:
         response = client.post(
-            "/agentes/debug-local/pipeline-plano-e2e-temporario",
+            "/agentes/pipeline-plano-e2e-temporario",
             data={
                 "tipo_fonte": "pdf",
                 "contexto": "pipeline_teste_plano_e2e",

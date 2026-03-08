@@ -3,6 +3,9 @@ from fastapi import APIRouter
 from vidasync_multiagents_ia.config import get_settings
 from vidasync_multiagents_ia.api.routes.ai_router import router as ai_router_router
 from vidasync_multiagents_ia.api.routes.audio_transcricao import router as audio_transcricao_router
+from vidasync_multiagents_ia.api.routes.foto_calorias_pipeline_teste import (
+    router as foto_calorias_pipeline_teste_router,
+)
 from vidasync_multiagents_ia.api.routes.foto_alimentos import router as foto_alimentos_router
 from vidasync_multiagents_ia.api.routes.frase_porcoes import router as frase_porcoes_router
 from vidasync_multiagents_ia.api.routes.imagem_texto import router as imagem_texto_router
@@ -36,6 +39,7 @@ api_router.include_router(imagem_texto_router)
 api_router.include_router(pdf_texto_router)
 api_router.include_router(plano_texto_normalizado_router)
 if settings.debug_local_routes_enabled:
+    api_router.include_router(foto_calorias_pipeline_teste_router)
     api_router.include_router(plano_imagem_pipeline_teste_router)
     api_router.include_router(plano_pipeline_e2e_teste_router)
 api_router.include_router(tbca_router)
