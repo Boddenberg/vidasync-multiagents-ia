@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -45,6 +45,8 @@ class ChatCadastroRefeicoesFlowService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._tool_runner = tool_runner
         self._logger = logging.getLogger(__name__)
@@ -600,3 +602,4 @@ def _clamp_confidence(value: float | None) -> float | None:
     if value is None:
         return None
     return round(max(0.0, min(1.0, value)), 4)
+

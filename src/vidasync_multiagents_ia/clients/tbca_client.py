@@ -6,6 +6,7 @@ from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.observability import record_external_request
+from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TBCAFoodCandidate, TBCANutrientRow
 
 TBCA_BASE_URL = "https://www.tbca.net.br/base-dados/"
@@ -171,11 +172,19 @@ class _DetailNutrientTableParser(HTMLParser):
 
 
 class TBCAClient:
-    def __init__(self, timeout_seconds: float = 20.0) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float = 20.0,
+        *,
+        log_payloads: bool = True,
+        log_max_chars: int = 4000,
+    ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
         self._base_url = TBCA_BASE_URL
         self._search_url = urljoin(self._base_url, TBCA_SEARCH_PATH)
+        self._log_payloads = log_payloads
+        self._log_max_chars = max(256, log_max_chars)
 
     def search_foods(self, query: str) -> list[TBCAFoodCandidate]:
         search_url = f"{self._search_url}?{urlencode({'produto': query})}"
@@ -204,7 +213,12 @@ class TBCAClient:
         started = perf_counter()
         self._logger.info(
             "tbca.http.request",
-            extra={"client": "tbca", "operation": "request_html", "url": url, "timeout_seconds": self._timeout_seconds},
+            extra={
+                "client": "tbca",
+                "operation": "request_html",
+                "url": sanitize_url(url),
+                "timeout_seconds": self._timeout_seconds,
+            },
         )
         request = Request(
             url=url,
@@ -228,10 +242,11 @@ class TBCAClient:
                     extra={
                         "client": "tbca",
                         "operation": "request_html",
-                        "url": url,
+                        "url": sanitize_url(url),
                         "status_code": getattr(response, "status", 200),
                         "duration_ms": round(duration_ms, 4),
                         "response_size_bytes": len(content),
+                        "response_preview": self._preview(decoded),
                     },
                 )
                 record_external_request(
@@ -248,7 +263,7 @@ class TBCAClient:
                 extra={
                     "client": "tbca",
                     "operation": "request_html",
-                    "url": url,
+                    "url": sanitize_url(url),
                     "status_code": exc.code,
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "HTTPError",
@@ -263,7 +278,7 @@ class TBCAClient:
                 extra={
                     "client": "tbca",
                     "operation": "request_html",
-                    "url": url,
+                    "url": sanitize_url(url),
                     "status_code": "network_error",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "URLError",
@@ -278,7 +293,7 @@ class TBCAClient:
                 extra={
                     "client": "tbca",
                     "operation": "request_html",
-                    "url": url,
+                    "url": sanitize_url(url),
                     "status_code": "timeout",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "TimeoutError",
@@ -286,6 +301,11 @@ class TBCAClient:
             )
             record_external_request(client="tbca", operation="request_html", status="timeout", duration_ms=duration_ms)
             raise TBCAClientError(f"TBCA request timeout while requesting '{url}'.") from exc
+
+    def _preview(self, raw: str) -> str | None:
+        if not self._log_payloads:
+            return None
+        return preview_text(raw, max_chars=self._log_max_chars)
 
 
 def _normalize_space(text: str) -> str:

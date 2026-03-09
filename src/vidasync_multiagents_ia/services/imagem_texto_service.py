@@ -7,6 +7,7 @@ from openai import APIConnectionError, APIError
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.schemas import (
     AgenteTranscricaoImagemTexto,
     ImagemTextoItemResponse,
@@ -23,6 +24,8 @@ class ImagemTextoService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._logger = logging.getLogger(__name__)
 
@@ -62,16 +65,17 @@ class ImagemTextoService:
 
         # /**** ThreadPool para paralelizar chamadas sincrona do client OpenAI. ****/
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            resultados = list(
-                executor.map(
-                    lambda url: self._transcrever_item(
-                        imagem_url=url,
-                        system_prompt=system_prompt,
-                        user_prompt=user_prompt,
-                    ),
-                    imagem_urls_resolvidas,
+            futures = [
+                submit_with_context(
+                    executor,
+                    self._transcrever_item,
+                    imagem_url=url,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
                 )
-            )
+                for url in imagem_urls_resolvidas
+            ]
+            resultados = [future.result() for future in futures]
 
         total_sucesso = sum(1 for item in resultados if item.status == "sucesso")
         total_erro = len(resultados) - total_sucesso
@@ -142,3 +146,4 @@ class ImagemTextoService:
             supabase_url=self._settings.supabase_url,
             public_bucket=self._settings.supabase_storage_public_bucket,
         )
+

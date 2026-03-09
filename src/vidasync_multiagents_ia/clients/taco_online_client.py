@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.observability import record_external_request
+from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TacoOnlineFoodIndexItem, TacoOnlineRawFoodData
 
 TACO_ONLINE_BASE_URL = "https://www.tabelatacoonline.com.br"
@@ -23,10 +24,18 @@ class TacoOnlineParsingError(RuntimeError):
 
 
 class TacoOnlineClient:
-    def __init__(self, timeout_seconds: float = 20.0) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float = 20.0,
+        *,
+        log_payloads: bool = True,
+        log_max_chars: int = 4000,
+    ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
         self._cached_index: list[TacoOnlineFoodIndexItem] | None = None
+        self._log_payloads = log_payloads
+        self._log_max_chars = max(256, log_max_chars)
 
     def fetch_html(self, page_url: str) -> str:
         started = perf_counter()
@@ -35,7 +44,7 @@ class TacoOnlineClient:
             extra={
                 "client": "taco_online",
                 "operation": "fetch_html",
-                "url": page_url,
+                "url": sanitize_url(page_url),
                 "timeout_seconds": self._timeout_seconds,
             },
         )
@@ -61,10 +70,11 @@ class TacoOnlineClient:
                     extra={
                         "client": "taco_online",
                         "operation": "fetch_html",
-                        "url": page_url,
+                        "url": sanitize_url(page_url),
                         "status_code": getattr(response, "status", 200),
                         "duration_ms": round(duration_ms, 4),
                         "response_size_bytes": len(content),
+                        "response_preview": self._preview(decoded),
                     },
                 )
                 record_external_request(
@@ -81,7 +91,7 @@ class TacoOnlineClient:
                 extra={
                     "client": "taco_online",
                     "operation": "fetch_html",
-                    "url": page_url,
+                    "url": sanitize_url(page_url),
                     "status_code": exc.code,
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "HTTPError",
@@ -104,7 +114,7 @@ class TacoOnlineClient:
                 extra={
                     "client": "taco_online",
                     "operation": "fetch_html",
-                    "url": page_url,
+                    "url": sanitize_url(page_url),
                     "status_code": "network_error",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "URLError",
@@ -124,7 +134,7 @@ class TacoOnlineClient:
                 extra={
                     "client": "taco_online",
                     "operation": "fetch_html",
-                    "url": page_url,
+                    "url": sanitize_url(page_url),
                     "status_code": "timeout",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "TimeoutError",
@@ -137,6 +147,11 @@ class TacoOnlineClient:
                 duration_ms=duration_ms,
             )
             raise TacoOnlineClientError(f"TACO Online request timeout while requesting '{page_url}'.") from exc
+
+    def _preview(self, raw: str) -> str | None:
+        if not self._log_payloads:
+            return None
+        return preview_text(raw, max_chars=self._log_max_chars)
 
     def extract_public_food_data(self, html: str, expected_slug: str | None) -> TacoOnlineRawFoodData:
         window = self._find_food_window(html=html, expected_slug=expected_slug)

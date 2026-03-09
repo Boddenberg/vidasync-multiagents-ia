@@ -7,19 +7,35 @@ from typing import Any
 from openai import OpenAI
 
 from vidasync_multiagents_ia.observability import record_external_request, record_external_timeout
+from vidasync_multiagents_ia.observability.payload_preview import preview_json, preview_text, sanitize_url
 
 
 class OpenAIClient:
-    def __init__(self, api_key: str, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        timeout_seconds: float = 60.0,
+        *,
+        log_payloads: bool = True,
+        log_max_chars: int = 4000,
+    ) -> None:
         self._client = OpenAI(api_key=api_key.strip(), timeout=timeout_seconds)
         self._logger = logging.getLogger(__name__)
+        self._log_payloads = log_payloads
+        self._log_max_chars = max(256, log_max_chars)
 
     def generate_text(self, *, model: str, prompt: str) -> str:
         operation = "generate_text"
         started = perf_counter()
         self._logger.info(
             "openai.request",
-            extra={"client": "openai", "operation": operation, "model": model, "prompt_chars": len(prompt)},
+            extra={
+                "client": "openai",
+                "operation": operation,
+                "model": model,
+                "prompt_chars": len(prompt),
+                "prompt_preview": self._preview_text(prompt),
+            },
         )
         try:
             response = self._client.responses.create(model=model, input=prompt)
@@ -34,6 +50,7 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
+                    "response_preview": self._preview_text(output),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -75,7 +92,9 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "image_url": image_url,
+                "system_prompt_preview": self._preview_text(system_prompt),
+                "user_prompt_preview": self._preview_text(user_prompt),
+                "image_url": sanitize_url(image_url),
             },
         )
         try:
@@ -108,6 +127,8 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
+                    "response_preview": self._preview_text(output_text),
+                    "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -149,7 +170,9 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "image_url": image_url,
+                "system_prompt_preview": self._preview_text(system_prompt),
+                "user_prompt_preview": self._preview_text(user_prompt),
+                "image_url": sanitize_url(image_url),
             },
         )
         try:
@@ -181,6 +204,7 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
+                    "response_preview": self._preview_text(output),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -223,6 +247,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
+                "system_prompt_preview": self._preview_text(system_prompt),
+                "user_prompt_preview": self._preview_text(user_prompt),
                 "file_name": filename,
                 "pdf_bytes": len(pdf_bytes),
             },
@@ -267,6 +293,7 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
+                    "response_preview": self._preview_text(output),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -323,6 +350,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
+                "system_prompt_preview": self._preview_text(system_prompt),
+                "user_prompt_preview": self._preview_text(user_prompt),
                 "file_name": filename,
                 "pdf_bytes": len(pdf_bytes),
             },
@@ -368,6 +397,8 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
+                    "response_preview": self._preview_text(output_text),
+                    "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -421,6 +452,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
+                "system_prompt_preview": self._preview_text(system_prompt),
+                "user_prompt_preview": self._preview_text(user_prompt),
             },
         )
         try:
@@ -450,6 +483,8 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
+                    "response_preview": self._preview_text(output_text),
+                    "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -514,6 +549,7 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
+                    "response_preview": self._preview_text(output),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
@@ -536,6 +572,16 @@ class OpenAIClient:
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
             raise
+
+    def _preview_text(self, value: str | bytes | None) -> str | None:
+        if not self._log_payloads:
+            return None
+        return preview_text(value, max_chars=self._log_max_chars)
+
+    def _preview_json(self, value: Any) -> str | None:
+        if not self._log_payloads:
+            return None
+        return preview_json(value, max_chars=self._log_max_chars)
 
 
 def _extract_json_object(output_text: str) -> dict[str, Any]:

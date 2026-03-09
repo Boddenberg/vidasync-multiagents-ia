@@ -47,6 +47,8 @@ class ChatReceitasFlowService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._rag_context_builder = rag_context_builder or build_context_for_query
         self._logger = logging.getLogger(__name__)
@@ -210,7 +212,7 @@ def _normalize_profile(payload: dict[str, Any]) -> dict[str, Any]:
 def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
     lower = prompt.lower()
     restricoes: list[str] = []
-    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar", "sem açúcar"):
+    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar", "sem aÃ§Ãºcar"):
         if termo in lower:
             restricoes.append(termo)
     objetivo = None
@@ -365,3 +367,4 @@ def _to_rag_metadata(documentos: list[Document]) -> list[dict[str, str | int | N
             }
         )
     return metadata
+

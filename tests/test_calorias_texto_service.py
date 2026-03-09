@@ -120,6 +120,23 @@ def _build_off_response(*, query: str, grams: float, energy_kcal: float) -> Open
     )
 
 
+def _build_off_response_with_products(
+    *,
+    query: str,
+    grams: float,
+    products: list[OpenFoodFactsProduct],
+) -> OpenFoodFactsSearchResponse:
+    return OpenFoodFactsSearchResponse(
+        consulta=query,
+        gramas=grams,
+        page=1,
+        page_size=5,
+        total_produtos=len(products),
+        produtos=products,
+        extraido_em=datetime.now(timezone.utc),
+    )
+
+
 def test_calorias_texto_service_usa_fontes_em_paralelo_e_seletor() -> None:
     query = "bebida energetica"
     grams = 500.0
@@ -218,3 +235,58 @@ def test_calorias_texto_service_nao_consulta_fontes_para_texto_combinado() -> No
     assert taco.calls == []
     assert off.calls == []
     assert len(openai_client.calls) == 1
+
+
+def test_calorias_texto_service_off_prioriza_produto_aderente_ao_nome() -> None:
+    query = "monster energy ultra"
+    grams = 473.0
+    off_products = [
+        OpenFoodFactsProduct(
+            codigo_barras="0001",
+            nome_produto="Snack de amendoim",
+            marcas="NAKD",
+            por_100g=OpenFoodFactsNutrients(
+                energia_kcal=520.0,
+                proteina_g=12.0,
+                carboidratos_g=30.0,
+                lipidios_g=35.0,
+            ),
+            ajustado=OpenFoodFactsNutrients(
+                energia_kcal=2459.6,
+                proteina_g=56.76,
+                carboidratos_g=141.9,
+                lipidios_g=165.55,
+            ),
+        ),
+        OpenFoodFactsProduct(
+            codigo_barras="0002",
+            nome_produto="Monster Energy Ultra",
+            marcas="Monster Energy",
+            por_100g=OpenFoodFactsNutrients(
+                energia_kcal=42.0,
+                proteina_g=0.0,
+                carboidratos_g=10.0,
+                lipidios_g=0.0,
+            ),
+            ajustado=OpenFoodFactsNutrients(
+                energia_kcal=198.66,
+                proteina_g=0.0,
+                carboidratos_g=47.3,
+                lipidios_g=0.0,
+            ),
+        ),
+    ]
+    service = CaloriasTextoService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        client=_FakeOpenAIClient(),  # type: ignore[arg-type]
+        taco_online_service=_FakeTacoService(error=ServiceError("nao encontrado", status_code=404)),  # type: ignore[arg-type]
+        open_food_facts_service=_FakeOpenFoodFactsService(  # type: ignore[arg-type]
+            response=_build_off_response_with_products(query=query, grams=grams, products=off_products)
+        ),
+    )
+
+    result = service.calcular(texto="473 g de Monster Energy Ultra")
+
+    assert result.itens[0].alimento == "Monster Energy Ultra"
+    assert result.totais.calorias_kcal == 198.66
+    assert result.fontes_consultadas[0].item == "Monster Energy Ultra"

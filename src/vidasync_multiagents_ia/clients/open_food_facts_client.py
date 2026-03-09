@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.observability import record_external_request
+from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 
 OPEN_FOOD_FACTS_BASE_URL = "https://world.openfoodfacts.org"
 OPEN_FOOD_FACTS_SEARCH_PATH = "/cgi/search.pl"
@@ -18,9 +19,17 @@ class OpenFoodFactsClientError(RuntimeError):
 
 
 class OpenFoodFactsClient:
-    def __init__(self, timeout_seconds: float = 20.0) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float = 20.0,
+        *,
+        log_payloads: bool = True,
+        log_max_chars: int = 4000,
+    ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
+        self._log_payloads = log_payloads
+        self._log_max_chars = max(256, log_max_chars)
 
     def search_products(
         self,
@@ -45,7 +54,7 @@ class OpenFoodFactsClient:
             extra={
                 "client": "open_food_facts",
                 "operation": "search_products",
-                "url": url,
+                "url": sanitize_url(url),
                 "query": query,
                 "page": page,
                 "page_size": page_size,
@@ -72,6 +81,7 @@ class OpenFoodFactsClient:
                         "status_code": getattr(response, "status", 200),
                         "duration_ms": round(duration_ms, 4),
                         "response_size_bytes": len(raw.encode("utf-8")),
+                        "response_preview": self._preview(raw),
                     },
                 )
                 record_external_request(
@@ -94,6 +104,7 @@ class OpenFoodFactsClient:
                     "status_code": exc.code,
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "HTTPError",
+                    "url": sanitize_url(url),
                 },
             )
             record_external_request(
@@ -116,6 +127,7 @@ class OpenFoodFactsClient:
                     "status_code": "network_error",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "URLError",
+                    "url": sanitize_url(url),
                 },
             )
             record_external_request(
@@ -135,6 +147,7 @@ class OpenFoodFactsClient:
                     "status_code": "timeout",
                     "duration_ms": round(duration_ms, 4),
                     "error_type": "TimeoutError",
+                    "url": sanitize_url(url),
                 },
             )
             record_external_request(
@@ -144,3 +157,8 @@ class OpenFoodFactsClient:
                 duration_ms=duration_ms,
             )
             raise OpenFoodFactsClientError("Open Food Facts request timeout while requesting search.") from exc
+
+    def _preview(self, raw: str) -> str | None:
+        if not self._log_payloads:
+            return None
+        return preview_text(raw, max_chars=self._log_max_chars)

@@ -15,6 +15,8 @@ class PdfTextoService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._logger = logging.getLogger(__name__)
 
@@ -102,3 +104,4 @@ class PdfTextoService:
 def _is_pdf_bytes(file_bytes: bytes) -> bool:
     # /**** Validacao minima do cabecalho PDF para evitar enviar arquivo errado ao provedor. ****/
     return file_bytes.startswith(b"%PDF-")
+

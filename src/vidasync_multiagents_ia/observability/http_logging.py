@@ -65,8 +65,11 @@ async def log_request_response(
         )
 
         _LOGGER.info(
-            "http.request.received",
+            "Requisicao HTTP recebida pela API.",
             extra={
+                "evento": "http.request.received",
+                "origem": "http_middleware",
+                "direcao": "request",
                 "request_id": request_id,
                 "method": request.method,
                 "path": request.url.path,
@@ -84,8 +87,11 @@ async def log_request_response(
         duration_ms = (perf_counter() - start) * 1000.0
         timeout = _is_timeout_exception(exc)
         _LOGGER.exception(
-            "http.request.failed",
+            "Falha ao processar requisicao HTTP.",
             extra={
+                "evento": "http.request.failed",
+                "origem": "http_middleware",
+                "direcao": "error",
                 "request_id": request_id,
                 "method": request.method,
                 "path": request.url.path,
@@ -125,8 +131,11 @@ async def log_request_response(
     timeout = response.status_code in {408, 504}
 
     _LOGGER.info(
-        "http.response.sent",
+        "Resposta HTTP enviada pela API.",
         extra={
+            "evento": "http.response.sent",
+            "origem": "http_middleware",
+            "direcao": "response",
             "request_id": request_id,
             "method": request.method,
             "path": request.url.path,

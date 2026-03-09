@@ -8,6 +8,7 @@ from vidasync_multiagents_ia.observability import (
     record_chat_flow_execution,
     record_chat_timeout,
 )
+from vidasync_multiagents_ia.observability.payload_preview import preview_text
 from vidasync_multiagents_ia.schemas import OpenAIChatResponse
 from vidasync_multiagents_ia.services.orchestration import (
     AiOrchestratorRequest,
@@ -60,6 +61,12 @@ class OpenAIChatService:
                 "usar_memoria": usar_memoria,
                 "plano_anexo_presente": bool(plano_anexo),
                 "refeicao_anexo_presente": bool(refeicao_anexo),
+                "prompt_preview": preview_text(
+                    prompt,
+                    max_chars=self._settings.log_internal_max_body_chars,
+                )
+                if self._settings.log_internal_payloads
+                else None,
             },
         )
         try:
@@ -118,6 +125,12 @@ class OpenAIChatService:
                 "memory_turns": output.memoria.total_turnos if output.memoria else 0,
                 "warnings": len(output.roteamento.warnings),
                 "precisa_revisao": output.roteamento.precisa_revisao,
+                "response_preview": preview_text(
+                    output.response,
+                    max_chars=self._settings.log_internal_max_body_chars,
+                )
+                if self._settings.log_internal_payloads
+                else None,
                 "duration_ms": round(duration_ms, 4),
             },
         )
@@ -149,3 +162,4 @@ def _is_timeout_exception(exc: Exception) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+

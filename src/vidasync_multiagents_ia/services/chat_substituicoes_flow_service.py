@@ -59,6 +59,8 @@ class ChatSubstituicoesFlowService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._rag_context_builder = rag_context_builder or build_context_for_query
         self._tool = SugerirSubstituicoesTool(
@@ -482,3 +484,4 @@ def _to_clean_list(value: Any) -> list[str]:
         if text:
             output.append(text)
     return output[:12]
+

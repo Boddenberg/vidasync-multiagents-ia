@@ -13,6 +13,7 @@ from vidasync_multiagents_ia.observability import (
     record_chat_stage_duration,
     record_chat_timeout,
 )
+from vidasync_multiagents_ia.observability.payload_preview import preview_text
 from vidasync_multiagents_ia.schemas import (
     ChatPipelineNome,
     ChatRoteamento,
@@ -101,6 +102,8 @@ class ChatConversacionalRouterService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._calorias_texto_service = calorias_texto_service or CaloriasTextoService(
             settings=settings,
@@ -396,6 +399,12 @@ class ChatConversacionalRouterService:
                 "rag_usado": rag_used,
                 "rag_docs_count": rag_docs,
                 "handler_duration_ms": payload.metadados.get("handler_duration_ms"),
+                "response_preview": preview_text(
+                    payload.response,
+                    max_chars=self._settings.log_internal_max_body_chars,
+                )
+                if self._settings.log_internal_payloads
+                else None,
             },
         )
         if payload.metadados.get("route_fallback_applied") is True:
@@ -684,3 +693,4 @@ def _is_timeout_exception(exc: Exception) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+

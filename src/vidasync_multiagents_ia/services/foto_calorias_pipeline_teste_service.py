@@ -146,7 +146,7 @@ class FotoCaloriasPipelineTesteService:
 def _montar_texto_para_calorias(itens: list[ItemAlimentoEstimado]) -> str:
     partes: list[str] = []
     for item in itens:
-        alimento = (item.consulta_canonica or item.nome_alimento).strip()
+        alimento = (item.nome_alimento or item.consulta_canonica).strip()
         if not alimento:
             continue
 
@@ -190,3 +190,4 @@ def _build_pipeline_warnings(
 
     warnings.extend(calorias_texto.warnings)
     return warnings
+

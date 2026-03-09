@@ -10,6 +10,7 @@ from openai import APIConnectionError, APIError
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.schemas import (
     AgenteNormalizacaoPlanoTexto,
     PlanoTextoNormalizadoResponse,
@@ -26,6 +27,8 @@ class PlanoTextoNormalizadoService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._logger = logging.getLogger(__name__)
 
@@ -53,16 +56,17 @@ class PlanoTextoNormalizadoService:
 
         max_workers = min(4, len(imagem_urls_resolvidas))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            payloads = list(
-                executor.map(
-                    lambda url: self._normalizar_payload_da_imagem(
-                        imagem_url=url,
-                        contexto=contexto,
-                        idioma=idioma,
-                    ),
-                    imagem_urls_resolvidas,
+            futures = [
+                submit_with_context(
+                    executor,
+                    self._normalizar_payload_da_imagem,
+                    imagem_url=url,
+                    contexto=contexto,
+                    idioma=idioma,
                 )
-            )
+                for url in imagem_urls_resolvidas
+            ]
+            payloads = [future.result() for future in futures]
 
         response = self._build_response_from_payloads(
             payloads=payloads,
@@ -578,7 +582,7 @@ def _parse_qtd_alimento_line(line: str) -> tuple[str, str] | None:
 
     compact = re.sub(r"\s+", " ", line).strip()
     pattern = re.match(
-        r"(?is)^(?P<qtd>\d+(?:[.,]\d+)?\s*(?:kg|g|ml|l|unidade|unid|und|col(?:her)?(?:es)?(?: de sopa| de cha| de sobremesa)?|fatia(?:s)?|porcao|prato|rod(?:ela)?s?|gotas?|copo(?:s)?)(?:[^a-z0-9]+.*)?)\s+(?P<alimento>[A-Za-zÀ-ÿ].+)$",
+        r"(?is)^(?P<qtd>\d+(?:[.,]\d+)?\s*(?:kg|g|ml|l|unidade|unid|und|col(?:her)?(?:es)?(?: de sopa| de cha| de sobremesa)?|fatia(?:s)?|porcao|prato|rod(?:ela)?s?|gotas?|copo(?:s)?)(?:[^a-z0-9]+.*)?)\s+(?P<alimento>[A-Za-zÃ€-Ã¿].+)$",
         compact,
     )
     if not pattern:
@@ -621,3 +625,4 @@ def _normalize_for_match(value: str) -> str:
     lowered = value.strip().lower()
     normalized = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"\s+", " ", normalized).strip()
+

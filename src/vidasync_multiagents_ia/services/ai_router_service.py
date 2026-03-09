@@ -10,6 +10,7 @@ from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.observability import record_ai_router_request, record_ai_router_timeout
 from vidasync_multiagents_ia.observability.context import reset_trace_id, set_trace_id
+from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import AIRouterRequest, AIRouterResponse
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
@@ -63,6 +64,12 @@ class AIRouterService:
                 "contexto": contexto,
                 "idioma": request.idioma,
                 "payload_keys": sorted(payload.keys()),
+                "payload_preview": preview_json(
+                    payload,
+                    max_chars=self._settings.log_internal_max_body_chars,
+                )
+                if self._settings.log_internal_payloads
+                else None,
             },
         )
         try:
@@ -99,6 +106,12 @@ class AIRouterService:
                     "status": execution.status,
                     "warnings": len(execution.warnings),
                     "precisa_revisao": execution.precisa_revisao,
+                    "resultado_preview": preview_json(
+                        execution.resultado,
+                        max_chars=self._settings.log_internal_max_body_chars,
+                    )
+                    if self._settings.log_internal_payloads
+                    else None,
                     "stage_resolver_handler_ms": round(resolve_duration_ms, 4),
                     "stage_executar_contexto_ms": round(execute_duration_ms, 4),
                     "stage_montar_resposta_ms": round(response_build_duration_ms, 4),
@@ -130,6 +143,12 @@ class AIRouterService:
                     "timeout": timeout,
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
+                    "payload_preview": preview_json(
+                        payload,
+                        max_chars=self._settings.log_internal_max_body_chars,
+                    )
+                    if self._settings.log_internal_payloads
+                    else None,
                 },
             )
             record_ai_router_request(contexto=contexto, status="erro", duration_ms=total_duration_ms)
@@ -424,7 +443,7 @@ def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
         normalized = value.strip().lower()
         if normalized in {"true", "1", "sim", "yes"}:
             return True
-        if normalized in {"false", "0", "nao", "não", "no"}:
+        if normalized in {"false", "0", "nao", "nÃ£o", "no"}:
             return False
     return default
 
@@ -460,3 +479,4 @@ def _decode_base64_file(*, encoded: str, file_kind: str, max_bytes: int) -> byte
             status_code=413,
         )
     return decoded
+

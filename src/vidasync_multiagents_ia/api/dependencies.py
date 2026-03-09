@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from vidasync_multiagents_ia.clients import OpenFoodFactsClient, TacoOnlineClient, TBCAClient
 from vidasync_multiagents_ia.config import get_settings
 from vidasync_multiagents_ia.services import (
     AIRouterService,
@@ -81,17 +82,35 @@ def get_orchestrator_service() -> OrchestratorService:
 
 @lru_cache(maxsize=1)
 def get_tbca_service() -> TBCAService:
-    return TBCAService()
+    settings = get_settings()
+    return TBCAService(
+        client=TBCAClient(
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
+        )
+    )
 
 
 @lru_cache(maxsize=1)
 def get_taco_online_service() -> TacoOnlineService:
-    return TacoOnlineService()
+    settings = get_settings()
+    return TacoOnlineService(
+        client=TacoOnlineClient(
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
+        )
+    )
 
 
 @lru_cache(maxsize=1)
 def get_open_food_facts_service() -> OpenFoodFactsService:
-    return OpenFoodFactsService()
+    settings = get_settings()
+    return OpenFoodFactsService(
+        client=OpenFoodFactsClient(
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
+        )
+    )
 
 
 @lru_cache(maxsize=1)

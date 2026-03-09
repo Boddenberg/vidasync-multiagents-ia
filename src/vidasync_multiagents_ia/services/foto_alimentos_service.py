@@ -26,6 +26,8 @@ class FotoAlimentosService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._logger = logging.getLogger(__name__)
 
@@ -302,3 +304,4 @@ def _confianca_media_itens(itens: list[ItemAlimentoEstimado]) -> float | None:
     if not confiancas:
         return None
     return round(sum(confiancas) / len(confiancas), 4)
+

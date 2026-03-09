@@ -5,6 +5,7 @@ from typing import Any
 
 from vidasync_multiagents_ia.clients import OpenFoodFactsClient, OpenFoodFactsClientError
 from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import (
     OpenFoodFactsNutrients,
     OpenFoodFactsProduct,
@@ -67,7 +68,25 @@ class OpenFoodFactsService:
 
         self._logger.info(
             "open_food_facts.search.completed",
-            extra={"query": query_value, "grams": grams, "page": page, "page_size": page_size, "total": total_products},
+            extra={
+                "query": query_value,
+                "grams": grams,
+                "page": page,
+                "page_size": page_size,
+                "total": total_products,
+                "products_preview": preview_json(
+                    [
+                        {
+                            "codigo_barras": product.codigo_barras,
+                            "nome_produto": product.nome_produto,
+                            "marcas": product.marcas,
+                            "energia_kcal_ajustada": product.ajustado.energia_kcal,
+                        }
+                        for product in products[:5]
+                    ],
+                    max_chars=4000,
+                ),
+            },
         )
 
         return OpenFoodFactsSearchResponse(
@@ -157,3 +176,4 @@ def _scale_value(value: float | None, factor: float) -> float | None:
     if value is None:
         return None
     return round(value * factor, 4)
+

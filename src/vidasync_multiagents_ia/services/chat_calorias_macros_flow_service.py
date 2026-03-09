@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -63,8 +63,10 @@ class ChatCaloriasMacrosFlowService:
             self._calorias_service = calorias_base
             shared_client = OpenAIClient(
                 api_key=settings.openai_api_key,
-                timeout_seconds=settings.openai_timeout_seconds,
-            )
+            timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
+        )
             self._tool_executor = build_chat_tool_executor(
                 settings=settings,
                 client=shared_client,
@@ -359,3 +361,4 @@ def _fmt_quantity(value: float) -> str:
     if float(normalized).is_integer():
         return str(int(normalized))
     return str(normalized)
+

@@ -15,6 +15,7 @@ from vidasync_multiagents_ia.schemas import (
 )
 from vidasync_multiagents_ia.services.foto_calorias_pipeline_teste_service import (
     FotoCaloriasPipelineTesteService,
+    _montar_texto_para_calorias,
 )
 
 
@@ -139,8 +140,8 @@ def test_pipeline_foto_calorias_service_sucesso() -> None:
 
     result = service.executar_pipeline(imagem_url="https://example.com/refeicao.jpg")
 
-    assert result.texto_calorias == "120 g de arroz branco cozido; frango grelhado"
-    assert calorias_service.texto_recebido == "120 g de arroz branco cozido; frango grelhado"
+    assert result.texto_calorias == "120 g de Arroz branco cozido; Frango grelhado"
+    assert calorias_service.texto_recebido == "120 g de Arroz branco cozido; Frango grelhado"
     assert result.agente.etapas_executadas == ["identificar_foto", "estimar_porcoes", "calcular_calorias"]
     assert result.agente.status == "parcial"
     assert "Imagem com qualidade inadequada para analise confiavel." in result.warnings
@@ -161,3 +162,17 @@ def test_pipeline_foto_calorias_service_tenta_mesmo_quando_nao_e_comida() -> Non
 
     assert result.agente.status == "parcial"
     assert "Imagem nao foi classificada como comida; tentativa de estimativa forcada no pipeline." in result.warnings
+
+
+def test_montar_texto_para_calorias_prefere_nome_especifico() -> None:
+    texto = _montar_texto_para_calorias(
+        [
+            ItemAlimentoEstimado(
+                nome_alimento="Monster Energy Ultra",
+                consulta_canonica="bebida energetica",
+                quantidade_estimada_gramas=473.0,
+                confianca=0.9,
+            )
+        ]
+    )
+    assert texto == "473 g de Monster Energy Ultra"

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     log_http_headers: bool = False
     log_http_max_body_bytes: int = 32768
     log_http_max_body_chars: int = 4000
+    log_external_payloads: bool = True
+    log_external_max_body_chars: int = 12000
+    log_internal_payloads: bool = True
+    log_internal_max_body_chars: int = 8000
     metrics_enabled: bool = True
     response_exclude_none: bool = False
     openai_timeout_seconds: float = 60.0

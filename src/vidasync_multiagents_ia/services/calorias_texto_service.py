@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -7,9 +8,11 @@ from typing import Any
 
 from openai import APIConnectionError, APIError
 
-from vidasync_multiagents_ia.clients import OpenAIClient
+from vidasync_multiagents_ia.clients import OpenAIClient, OpenFoodFactsClient, TacoOnlineClient
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.observability.context import submit_with_context
+from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import (
     AgenteCaloriasTexto,
     CaloriasTextoResponse,
@@ -62,9 +65,21 @@ class CaloriasTextoService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
-        self._taco_online_service = taco_online_service or TacoOnlineService()
-        self._open_food_facts_service = open_food_facts_service or OpenFoodFactsService()
+        self._taco_online_service = taco_online_service or TacoOnlineService(
+            client=TacoOnlineClient(
+                log_payloads=settings.log_external_payloads,
+                log_max_chars=settings.log_external_max_body_chars,
+            )
+        )
+        self._open_food_facts_service = open_food_facts_service or OpenFoodFactsService(
+            client=OpenFoodFactsClient(
+                log_payloads=settings.log_external_payloads,
+                log_max_chars=settings.log_external_max_body_chars,
+            )
+        )
         self._logger = logging.getLogger(__name__)
 
     def calcular(
@@ -158,6 +173,19 @@ class CaloriasTextoService:
         if not candidates:
             return None
 
+        self._logger.info(
+            "calorias_texto.structured_candidates",
+            extra={
+                "food_query": food_query,
+                "grams": grams,
+                "candidates": len(candidates),
+                "candidates_preview": preview_json(
+                    [candidate.to_dict() for candidate in _order_candidates(candidates)],
+                    max_chars=self._settings.log_internal_max_body_chars,
+                ),
+            },
+        )
+
         selected, selection, selection_warnings = self._selecionar_melhor_fonte(
             candidates=candidates,
             food_query=food_query,
@@ -165,6 +193,20 @@ class CaloriasTextoService:
             idioma=idioma,
         )
         warnings.extend(selection_warnings)
+        self._logger.info(
+            "calorias_texto.structured_selected",
+            extra={
+                "food_query": food_query,
+                "grams": grams,
+                "selected_source": selected.fonte,
+                "selected_item": selected.item,
+                "selected_confidence": selected.confianca,
+                "selection_preview": preview_json(
+                    selection.model_dump(exclude_none=True),
+                    max_chars=self._settings.log_internal_max_body_chars,
+                ),
+            },
+        )
 
         quantity_text = _format_grams_text(grams) if _contains_explicit_grams(texto_original) else None
         item = ItemCaloriasTexto(
@@ -228,9 +270,21 @@ class CaloriasTextoService:
         futures: dict[Any, str] = {}
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures[executor.submit(self._consultar_fonte_taco, food_query=food_query, grams=grams)] = _FONTE_TACO
             futures[
-                executor.submit(self._consultar_fonte_open_food_facts, food_query=food_query, grams=grams)
+                submit_with_context(
+                    executor,
+                    self._consultar_fonte_taco,
+                    food_query=food_query,
+                    grams=grams,
+                )
+            ] = _FONTE_TACO
+            futures[
+                submit_with_context(
+                    executor,
+                    self._consultar_fonte_open_food_facts,
+                    food_query=food_query,
+                    grams=grams,
+                )
             ] = _FONTE_OPEN_FOOD_FACTS
 
             for future in as_completed(futures):
@@ -286,7 +340,7 @@ class CaloriasTextoService:
 
     def _consultar_fonte_open_food_facts(self, *, food_query: str, grams: float) -> _FonteCaloriasCandidate | None:
         response = self._open_food_facts_service.search(query=food_query, grams=grams, page=1, page_size=5)
-        best_product = _select_best_open_food_facts_product(response.produtos)
+        best_product = _select_best_open_food_facts_product(response.produtos, food_query=food_query)
         if best_product is None:
             return None
 
@@ -555,13 +609,17 @@ def _confianca_media_itens(itens: list[ItemCaloriasTexto]) -> float | None:
     return round(sum(confiancas) / len(confiancas), 4)
 
 
-def _select_best_open_food_facts_product(products: list[OpenFoodFactsProduct]) -> OpenFoodFactsProduct | None:
+def _select_best_open_food_facts_product(
+    products: list[OpenFoodFactsProduct],
+    *,
+    food_query: str,
+) -> OpenFoodFactsProduct | None:
     if not products:
         return None
-    return max(products, key=_open_food_facts_product_score)
+    return max(products, key=lambda product: _open_food_facts_product_score(product, food_query=food_query))
 
 
-def _open_food_facts_product_score(product: OpenFoodFactsProduct) -> float:
+def _open_food_facts_product_score(product: OpenFoodFactsProduct, *, food_query: str) -> float:
     adjusted = product.ajustado
     score = 0.0
     if adjusted.energia_kcal is not None:
@@ -576,7 +634,48 @@ def _open_food_facts_product_score(product: OpenFoodFactsProduct) -> float:
         score += 0.2
     if product.marcas:
         score += 0.1
+    score += _open_food_facts_query_relevance_score(food_query=food_query, product=product)
     return score
+
+
+def _open_food_facts_query_relevance_score(*, food_query: str, product: OpenFoodFactsProduct) -> float:
+    query_tokens = _tokenize_for_similarity(food_query)
+    if not query_tokens:
+        return 0.0
+
+    product_text = f"{product.nome_produto or ''} {product.marcas or ''}".strip()
+    product_tokens = _tokenize_for_similarity(product_text)
+    if not product_tokens:
+        return 0.0
+
+    overlap = query_tokens.intersection(product_tokens)
+    if not overlap:
+        return 0.0
+
+    coverage = len(overlap) / len(query_tokens)
+    score = (coverage * 4.0) + (len(overlap) * 0.3)
+
+    normalized_query = _normalize_for_similarity(food_query)
+    normalized_product = _normalize_for_similarity(product_text)
+    if normalized_query and normalized_query in normalized_product:
+        score += 2.0
+
+    return score
+
+
+def _tokenize_for_similarity(value: str) -> set[str]:
+    normalized = _normalize_for_similarity(value)
+    if not normalized:
+        return set()
+    return {token for token in re.split(r"[^a-z0-9]+", normalized) if len(token) >= 3}
+
+
+def _normalize_for_similarity(value: str) -> str:
+    lowered = value.lower().strip()
+    if not lowered:
+        return ""
+    without_accents = unicodedata.normalize("NFKD", lowered)
+    return "".join(char for char in without_accents if not unicodedata.combining(char))
 
 
 def _estimate_confidence(
@@ -716,3 +815,4 @@ def _has_core_macros(
     fat: float | None,
 ) -> bool:
     return any(value is not None for value in (energy, protein, carbs, fat))
+

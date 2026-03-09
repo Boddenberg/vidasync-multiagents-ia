@@ -45,6 +45,8 @@ class PlanoAlimentarService:
         self._client = client or OpenAIClient(
             api_key=settings.openai_api_key,
             timeout_seconds=settings.openai_timeout_seconds,
+            log_payloads=settings.log_external_payloads,
+            log_max_chars=settings.log_external_max_body_chars,
         )
         self._preprocessor = preprocessor or PlanoAlimentarPreprocessor()
         self._logger = logging.getLogger(__name__)
@@ -1081,3 +1083,4 @@ def _dedupe_itens(itens: list[ItemAlimentarPlano]) -> list[ItemAlimentarPlano]:
         deduped.append(item)
 
     return deduped
+
