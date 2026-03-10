@@ -9,7 +9,9 @@ from vidasync_multiagents_ia.schemas import (
     IdentificacaoFotoResponse,
     ItemAlimentoEstimado,
     ItemCaloriasTexto,
+    NomePratoFotoResponse,
     ResultadoIdentificacaoFoto,
+    ResultadoNomePratoFoto,
     ResultadoPorcoesFoto,
     TotaisCaloriasTexto,
 )
@@ -88,6 +90,32 @@ class _FakeFotoAlimentosService:
             extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
         )
 
+    def identificar_nome_prato_da_foto(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str = "identificar_nome_prato_foto",
+        idioma: str = "pt-BR",
+    ) -> NomePratoFotoResponse:
+        return NomePratoFotoResponse(
+            contexto=contexto,
+            imagem_url=imagem_url,
+            resultado_nome_prato=ResultadoNomePratoFoto(
+                nome_prato="Poke de salmao",
+                confianca=0.91,
+                observacoes="Bowl com peixe, arroz e vegetais.",
+            ),
+            agente=ExecucaoAgenteFoto(
+                contexto=contexto,
+                nome_agente="agente_nome_prato_foto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                confianca=0.91,
+                saida={"nome_prato": "Poke de salmao"},
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
 
 class _FakeCaloriasTextoService:
     def __init__(self) -> None:
@@ -130,6 +158,33 @@ class _FakeCaloriasTextoService:
         )
 
 
+class _FakeFotoAlimentosServiceNomeBaixaConfianca(_FakeFotoAlimentosService):
+    def identificar_nome_prato_da_foto(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str = "identificar_nome_prato_foto",
+        idioma: str = "pt-BR",
+    ) -> NomePratoFotoResponse:
+        return NomePratoFotoResponse(
+            contexto=contexto,
+            imagem_url=imagem_url,
+            resultado_nome_prato=ResultadoNomePratoFoto(
+                nome_prato="Poke de salmao",
+                confianca=0.31,
+            ),
+            agente=ExecucaoAgenteFoto(
+                contexto=contexto,
+                nome_agente="agente_nome_prato_foto",
+                status="parcial",
+                modelo="gpt-4o-mini",
+                confianca=0.31,
+                saida={"nome_prato": "Poke de salmao"},
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
 def test_pipeline_foto_calorias_service_sucesso() -> None:
     calorias_service = _FakeCaloriasTextoService()
     service = FotoCaloriasPipelineTesteService(
@@ -141,7 +196,12 @@ def test_pipeline_foto_calorias_service_sucesso() -> None:
     result = service.executar_pipeline(imagem_url="https://example.com/refeicao.jpg")
 
     assert result.texto_calorias == "120 g de Arroz branco cozido; Frango grelhado"
+    assert result.nome_prato_detectado == "Poke de salmao"
+    assert len(result.composicao) == 2
+    assert result.composicao[0].nome_alimento == "Arroz branco cozido"
+    assert result.composicao[1].nome_alimento == "Frango grelhado"
     assert calorias_service.texto_recebido == "120 g de Arroz branco cozido; Frango grelhado"
+    assert result.calorias_texto.itens[0].alimento == "Poke de salmao"
     assert result.agente.etapas_executadas == ["identificar_foto", "estimar_porcoes", "calcular_calorias"]
     assert result.agente.status == "parcial"
     assert "Imagem com qualidade inadequada para analise confiavel." in result.warnings
@@ -149,6 +209,19 @@ def test_pipeline_foto_calorias_service_sucesso() -> None:
     assert "Uma ou mais porcoes foram estimadas sem gramas." in result.warnings
     assert "Uma ou mais porcoes foram estimadas com baixa confianca." in result.warnings
     assert "estimativa nutricional aproximada" in result.warnings
+
+
+def test_pipeline_foto_calorias_service_nao_sobrescreve_nome_com_baixa_confianca() -> None:
+    service = FotoCaloriasPipelineTesteService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        foto_service=_FakeFotoAlimentosServiceNomeBaixaConfianca(),  # type: ignore[arg-type]
+        calorias_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
+    )
+
+    result = service.executar_pipeline(imagem_url="https://example.com/refeicao.jpg")
+
+    assert result.calorias_texto.itens[0].alimento == "arroz branco cozido"
+    assert result.nome_prato_detectado == "Poke de salmao"
 
 
 def test_pipeline_foto_calorias_service_tenta_mesmo_quando_nao_e_comida() -> None:

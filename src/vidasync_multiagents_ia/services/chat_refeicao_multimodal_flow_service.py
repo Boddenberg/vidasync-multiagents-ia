@@ -1,10 +1,12 @@
 import base64
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService
 from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
 from vidasync_multiagents_ia.services.frase_porcoes_service import FrasePorcoesService
@@ -105,11 +107,47 @@ class ChatRefeicaoMultimodalFlowService:
                 },
             )
 
-        porcoes = self._foto_alimentos_service.estimar_porcoes_do_prato(
-            imagem_url=imagem_url,
-            contexto="estimar_porcoes_do_prato",
-            idioma=idioma,
-        )
+        nome_prato_reconhecido: str | None = None
+        nome_prato_payload: dict[str, Any] | None = None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_porcoes = submit_with_context(
+                executor,
+                self._foto_alimentos_service.estimar_porcoes_do_prato,
+                imagem_url=imagem_url,
+                contexto="estimar_porcoes_do_prato",
+                idioma=idioma,
+            )
+            future_nome_prato = None
+            if hasattr(self._foto_alimentos_service, "identificar_nome_prato_da_foto"):
+                future_nome_prato = submit_with_context(
+                    executor,
+                    self._foto_alimentos_service.identificar_nome_prato_da_foto,
+                    imagem_url=imagem_url,
+                    contexto="identificar_nome_prato_foto",
+                    idioma=idioma,
+                )
+
+            porcoes = future_porcoes.result()
+            if future_nome_prato is not None:
+                try:
+                    nome_prato_response = future_nome_prato.result()
+                    nome_prato_payload = nome_prato_response.model_dump(exclude_none=True)
+                    nome_prato = (
+                        nome_prato_response.resultado_nome_prato.nome_prato
+                        if nome_prato_response.resultado_nome_prato
+                        else None
+                    )
+                    nome_prato_reconhecido = (nome_prato or "").strip() or None
+                except Exception as exc:  # noqa: BLE001
+                    self._logger.warning(
+                        "chat_refeicao_multimodal.nome_prato.failed",
+                        extra={
+                            "imagem_url": imagem_url,
+                            "error_type": type(exc).__name__,
+                            "error_message": str(exc),
+                        },
+                    )
+
         itens = [
             {
                 "nome_alimento": item.nome_alimento,
@@ -129,6 +167,14 @@ class ChatRefeicaoMultimodalFlowService:
         if itens_baixa_confianca > 0:
             warnings.append("Uma ou mais porcoes ficaram com baixa confianca.")
 
+        cadastro_extraido: dict[str, Any] = {
+            "origem_entrada": "foto",
+            "itens": itens,
+        }
+        if nome_prato_reconhecido:
+            cadastro_extraido["nome_registro"] = nome_prato_reconhecido
+            cadastro_extraido["nome_alimento"] = nome_prato_reconhecido
+
         precisa_revisao = bool(warnings)
         return ChatRefeicaoMultimodalFlowOutput(
             resposta=_build_resposta_refeicao(
@@ -143,10 +189,9 @@ class ChatRefeicaoMultimodalFlowService:
                 "origem_entrada": "foto",
                 "identificacao": identificacao.model_dump(exclude_none=True),
                 "porcoes": porcoes.model_dump(exclude_none=True),
-                "cadastro_extraido": {
-                    "origem_entrada": "foto",
-                    "itens": itens,
-                },
+                "nome_prato_reconhecido": nome_prato_reconhecido,
+                "nome_prato_agente": nome_prato_payload,
+                "cadastro_extraido": cadastro_extraido,
             },
         )
 

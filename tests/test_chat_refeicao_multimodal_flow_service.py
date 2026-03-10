@@ -14,7 +14,9 @@ from vidasync_multiagents_ia.schemas import (
     FrasePorcoesResponse,
     ItemAlimentoEstimado,
     ItemPorcaoTexto,
+    NomePratoFotoResponse,
     ResultadoIdentificacaoFoto,
+    ResultadoNomePratoFoto,
     ResultadoPorcoesFoto,
     ResultadoPorcoesTexto,
 )
@@ -81,6 +83,32 @@ class _FakeFotoAlimentosService:
                 modelo="gpt-4o-mini",
                 confianca=0.88,
                 saida={},
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+    def identificar_nome_prato_da_foto(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str = "identificar_nome_prato_foto",
+        idioma: str = "pt-BR",
+    ) -> NomePratoFotoResponse:
+        assert imagem_url == "https://example.com/prato.jpg"
+        return NomePratoFotoResponse(
+            contexto=contexto,
+            imagem_url=imagem_url,
+            resultado_nome_prato=ResultadoNomePratoFoto(
+                nome_prato="Poke de salmao",
+                confianca=0.9,
+            ),
+            agente=ExecucaoAgenteFoto(
+                contexto=contexto,
+                nome_agente="agente_nome_prato_foto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                confianca=0.9,
+                saida={"nome_prato": "Poke de salmao"},
             ),
             extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
         )
@@ -170,6 +198,7 @@ def test_fluxo_refeicao_foto_sucesso() -> None:
     assert output.precisa_revisao is False
     assert output.warnings == []
     assert output.metadados["flow"] == "registro_refeicao_foto_v1"
+    assert output.metadados["cadastro_extraido"]["nome_registro"] == "Poke de salmao"
     assert output.metadados["cadastro_extraido"]["itens"][0]["nome_alimento"] == "arroz"
 
 

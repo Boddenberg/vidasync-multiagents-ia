@@ -18,6 +18,10 @@ class EstimativaPorcoesFotoRequest(FotoAgenteRequest):
     contexto: str = "estimar_porcoes_do_prato"
 
 
+class NomePratoFotoRequest(FotoAgenteRequest):
+    contexto: str = "identificar_nome_prato_foto"
+
+
 class ResultadoIdentificacaoFoto(BaseModel):
     eh_comida: bool
     qualidade_adequada: bool
@@ -36,6 +40,12 @@ class ItemAlimentoEstimado(BaseModel):
 class ResultadoPorcoesFoto(BaseModel):
     itens: list[ItemAlimentoEstimado] = Field(default_factory=list)
     observacoes_gerais: str | None = None
+
+
+class ResultadoNomePratoFoto(BaseModel):
+    nome_prato: str | None = None
+    confianca: float | None = None
+    observacoes: str | None = None
 
 
 class ExecucaoAgenteFoto(BaseModel):
@@ -59,5 +69,13 @@ class EstimativaPorcoesFotoResponse(BaseModel):
     contexto: str
     imagem_url: str
     resultado_porcoes: ResultadoPorcoesFoto
+    agente: ExecucaoAgenteFoto
+    extraido_em: datetime
+
+
+class NomePratoFotoResponse(BaseModel):
+    contexto: str
+    imagem_url: str
+    resultado_nome_prato: ResultadoNomePratoFoto
     agente: ExecucaoAgenteFoto
     extraido_em: datetime

@@ -12,7 +12,9 @@ from vidasync_multiagents_ia.schemas import (
     ExecucaoAgenteFoto,
     IdentificacaoFotoResponse,
     ItemAlimentoEstimado,
+    NomePratoFotoResponse,
     ResultadoIdentificacaoFoto,
+    ResultadoNomePratoFoto,
     ResultadoPorcoesFoto,
 )
 from vidasync_multiagents_ia.services.image_reference_resolver import (
@@ -133,6 +135,58 @@ class FotoAlimentosService:
             extraido_em=datetime.now(timezone.utc),
         )
 
+    def identificar_nome_prato_da_foto(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str = "identificar_nome_prato_foto",
+        idioma: str = "pt-BR",
+    ) -> NomePratoFotoResponse:
+        # /**** Agente 3: identifica o nome geral da refeicao (ex.: poke, yakisoba, feijoada). ****/
+        self._ensure_openai_api_key()
+        imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
+        self._logger.info(
+            "foto_alimentos.nome_prato.started",
+            extra={
+                "contexto": contexto,
+                "idioma": idioma,
+                "imagem_url": imagem_url_resolvida,
+                "modelo": self._settings.openai_model,
+            },
+        )
+        nome_prato_raw = self._executar_agente_nome_prato(
+            imagem_url=imagem_url_resolvida,
+            contexto=contexto,
+            idioma=idioma,
+        )
+        nome_prato = self._normalizar_nome_prato(nome_prato_raw)
+        status = "sucesso" if nome_prato.nome_prato else "parcial"
+        self._logger.info(
+            "foto_alimentos.nome_prato.completed",
+            extra={
+                "contexto": contexto,
+                "imagem_url": imagem_url_resolvida,
+                "nome_prato_detectado": nome_prato.nome_prato,
+                "confianca": nome_prato.confianca,
+                "status": status,
+            },
+        )
+
+        return NomePratoFotoResponse(
+            contexto=contexto,
+            imagem_url=imagem_url_resolvida,
+            resultado_nome_prato=nome_prato,
+            agente=ExecucaoAgenteFoto(
+                contexto="identificar_nome_prato_foto",
+                nome_agente="agente_nome_prato_foto",
+                status=status,
+                modelo=self._settings.openai_model,
+                confianca=nome_prato.confianca,
+                saida=nome_prato_raw,
+            ),
+            extraido_em=datetime.now(timezone.utc),
+        )
+
     def _ensure_openai_api_key(self) -> None:
         api_key = self._settings.openai_api_key.strip()
         if not api_key:
@@ -195,6 +249,31 @@ class FotoAlimentosService:
             imagem_url=imagem_url,
         )
 
+    def _executar_agente_nome_prato(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str,
+        idioma: str,
+    ) -> dict[str, Any]:
+        system_prompt = (
+            "Voce e um agente de reconhecimento do nome principal de pratos em fotos. "
+            "Responda somente em JSON valido, sem markdown. "
+            "Foque no nome geral da refeicao e evite retornar apenas ingredientes isolados."
+        )
+        user_prompt = (
+            f"Idioma de resposta: {idioma}. "
+            f"Contexto recebido: {contexto}. "
+            "Retorne JSON com as chaves: contexto, nome_prato, confianca, observacoes. "
+            "Se nao houver seguranca para nomear o prato, use nome_prato = null. "
+            "Use confianca de 0 a 1."
+        )
+        return self._executar_chamada_openai(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            imagem_url=imagem_url,
+        )
+
     def _executar_chamada_openai(
         self,
         *,
@@ -213,6 +292,13 @@ class FotoAlimentosService:
             self._logger.exception("Falha de conexao com a OpenAI em analise de foto")
             raise ServiceError("Falha de conexao com a OpenAI.", status_code=502) from exc
         except APIError as exc:
+            detail = str(exc).lower()
+            if "does not represent a valid image" in detail or "supported image formats" in detail:
+                self._logger.warning("Imagem invalida ou formato nao suportado para analise de foto")
+                raise ServiceError(
+                    "Imagem invalida para analise da OpenAI. Converta para JPEG, PNG, GIF ou WEBP.",
+                    status_code=422,
+                ) from exc
             self._logger.exception("Erro da OpenAI em analise de foto")
             raise ServiceError(f"Erro da OpenAI: {exc.__class__.__name__}", status_code=502) from exc
         except ValueError as exc:
@@ -261,6 +347,24 @@ class FotoAlimentosService:
         observacoes_gerais = _to_optional_str(payload.get("observacoes_gerais") or payload.get("general_notes"))
         return ResultadoPorcoesFoto(itens=itens, observacoes_gerais=observacoes_gerais)
 
+    def _normalizar_nome_prato(self, payload: dict[str, Any]) -> ResultadoNomePratoFoto:
+        nome_prato = _to_optional_str(
+            payload.get("nome_prato")
+            or payload.get("nome_refeicao")
+            or payload.get("dish_name")
+            or payload.get("meal_name")
+            or payload.get("food_name")
+            or payload.get("nome_alimento")
+        )
+        if nome_prato and _is_generic_plate_name(nome_prato):
+            nome_prato = None
+
+        return ResultadoNomePratoFoto(
+            nome_prato=nome_prato,
+            confianca=_to_optional_float(payload.get("confianca") or payload.get("confidence")),
+            observacoes=_to_optional_str(payload.get("observacoes") or payload.get("notes")),
+        )
+
 
 def _to_bool(value: Any, fallback: bool) -> bool:
     if isinstance(value, bool):
@@ -304,4 +408,20 @@ def _confianca_media_itens(itens: list[ItemAlimentoEstimado]) -> float | None:
     if not confiancas:
         return None
     return round(sum(confiancas) / len(confiancas), 4)
+
+
+def _is_generic_plate_name(value: str) -> bool:
+    normalized = " ".join(value.lower().split())
+    generic = {
+        "comida",
+        "refeicao",
+        "prato",
+        "alimento",
+        "meal",
+        "food",
+        "dish",
+    }
+    if normalized in generic:
+        return True
+    return len(normalized) < 3
 

@@ -6,6 +6,7 @@ from vidasync_multiagents_ia.schemas.calorias_texto import CaloriasTextoResponse
 from vidasync_multiagents_ia.schemas.foto_alimentos import (
     EstimativaPorcoesFotoResponse,
     IdentificacaoFotoResponse,
+    ItemAlimentoEstimado,
 )
 
 
@@ -49,6 +50,8 @@ class FotoCaloriasPipelineTesteResponse(BaseModel):
     contexto: str
     idioma: str
     imagem_url: str
+    nome_prato_detectado: str | None = None
+    composicao: list[ItemAlimentoEstimado] = Field(default_factory=list)
     texto_calorias: str
     identificacao_foto: IdentificacaoFotoResponse
     estimativa_porcoes: EstimativaPorcoesFotoResponse

@@ -33,6 +33,15 @@ class _FakeFotoCaloriasPipelineTesteService:
             contexto=contexto,
             idioma=idioma,
             imagem_url=imagem_url,
+            nome_prato_detectado="Poke bowl",
+            composicao=[
+                ItemAlimentoEstimado(
+                    nome_alimento="Arroz branco cozido",
+                    consulta_canonica="arroz branco cozido",
+                    quantidade_estimada_gramas=120.0,
+                    confianca=0.82,
+                )
+            ],
             texto_calorias="120 g de arroz branco cozido",
             identificacao_foto=IdentificacaoFotoResponse(
                 contexto="identificar_fotos",
@@ -138,6 +147,9 @@ def test_foto_calorias_pipeline_teste_route_com_alias_image_key() -> None:
         assert response.status_code == 200
         body = response.json()
         assert body["imagem_url"] == "https://example.com/prato.jpg"
+        assert body["nome_prato_detectado"] == "Poke bowl"
+        assert len(body["composicao"]) == 1
+        assert body["composicao"][0]["nome_alimento"] == "Arroz branco cozido"
         assert body["texto_calorias"] == "120 g de arroz branco cozido"
         assert body["calorias_texto"]["totais"]["calorias_kcal"] == 156.0
     finally:

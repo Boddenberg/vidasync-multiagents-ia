@@ -14,7 +14,7 @@ def test_resolve_image_reference_keeps_http_url() -> None:
     assert resolved == url
 
 
-def test_resolve_image_reference_converts_signed_url_to_public() -> None:
+def test_resolve_image_reference_keeps_signed_url() -> None:
     signed_url = (
         "https://project.supabase.co/storage/v1/object/sign/"
         "pipeline-inputs/file/abc/image.jpg?token=expired"
@@ -24,13 +24,10 @@ def test_resolve_image_reference_converts_signed_url_to_public() -> None:
         supabase_url="https://project.supabase.co",
         public_bucket="pipeline-inputs",
     )
-    assert (
-        resolved
-        == "https://project.supabase.co/storage/v1/object/public/pipeline-inputs/file/abc/image.jpg"
-    )
+    assert resolved == signed_url
 
 
-def test_resolve_image_reference_converts_authenticated_url_to_public() -> None:
+def test_resolve_image_reference_keeps_authenticated_url() -> None:
     authenticated_url = (
         "https://project.supabase.co/storage/v1/object/authenticated/"
         "pipeline-inputs/file/abc/image.jpg"
@@ -40,10 +37,7 @@ def test_resolve_image_reference_converts_authenticated_url_to_public() -> None:
         supabase_url="https://project.supabase.co",
         public_bucket="pipeline-inputs",
     )
-    assert (
-        resolved
-        == "https://project.supabase.co/storage/v1/object/public/pipeline-inputs/file/abc/image.jpg"
-    )
+    assert resolved == authenticated_url
 
 
 def test_resolve_image_reference_builds_public_url_from_key() -> None:
