@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +47,14 @@ class Settings(BaseSettings):
     chat_orchestrator_engine: str = "langgraph"
     debug_local_routes_enabled: bool = True
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_env_values(cls, data: object) -> object:
+        # /**** Permite env vars com ou sem aspas (ex.: "true", "60", "valor"). ****/
+        if not isinstance(data, dict):
+            return data
+        return {key: _strip_wrapping_quotes(value) for key, value in data.items()}
+
     model_config = SettingsConfigDict(
         env_file=(".env", ".env.local"),
         env_file_encoding="utf-8",
@@ -56,3 +65,16 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def _strip_wrapping_quotes(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+
+    normalized = value.strip()
+    if len(normalized) >= 2:
+        if (normalized.startswith('"') and normalized.endswith('"')) or (
+            normalized.startswith("'") and normalized.endswith("'")
+        ):
+            return normalized[1:-1].strip()
+    return normalized
