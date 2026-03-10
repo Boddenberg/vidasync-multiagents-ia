@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -45,12 +46,16 @@ async def handle_service_error(request: Request, exc: ServiceError) -> JSONRespo
 
 
 def run() -> None:
+    host = (os.getenv("HOST") or "0.0.0.0").strip() or "0.0.0.0"
+    port = _parse_port(os.getenv("PORT"), default=8000)
+    reload_enabled = _parse_bool(os.getenv("UVICORN_RELOAD"), default=False)
+
     logger.info(
         "api_startup",
         extra={
-            "host": "127.0.0.1",
-            "port": 8000,
-            "reload": True,
+            "host": host,
+            "port": port,
+            "reload": reload_enabled,
             "log_level": settings.log_level,
             "log_format": settings.log_format,
             "log_json_pretty": settings.log_json_pretty,
@@ -62,11 +67,31 @@ def run() -> None:
     )
     uvicorn.run(
         "vidasync_multiagents_ia.main:app",
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
+        host=host,
+        port=port,
+        reload=reload_enabled,
         log_config=None,
     )
+
+
+def _parse_port(value: str | None, *, default: int) -> int:
+    try:
+        if value is None:
+            return default
+        return int(str(value).strip().strip('"').strip("'"))
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_bool(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = str(value).strip().strip('"').strip("'").lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 if __name__ == "__main__":
