@@ -42,6 +42,8 @@ class FonteCaloriasConsulta(BaseModel):
 
 
 class SelecaoFonteCalorias(BaseModel):
+    descricao_original: str | None = None
+    pode_responder: bool | None = None
     fonte_escolhida: str | None = None
     confianca: float | None = None
     justificativa: str | None = None
@@ -57,5 +59,6 @@ class CaloriasTextoResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     fontes_consultadas: list[FonteCaloriasConsulta] = Field(default_factory=list)
     selecao_fonte: SelecaoFonteCalorias | None = None
+    selecoes_fontes: list[SelecaoFonteCalorias] = Field(default_factory=list)
     agente: AgenteCaloriasTexto
     extraido_em: datetime
