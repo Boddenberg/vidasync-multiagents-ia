@@ -139,21 +139,12 @@ class CaloriasTextoService:
 
         structured_requests = _extract_structured_food_requests(texto_value)
         if structured_requests is not None:
-            if len(structured_requests) == 1:
-                request = structured_requests[0]
-                calculo_estruturado = self._calcular_item_unico_estruturado(
-                    texto_original=request.descricao_original,
-                    food_query=request.food_query,
-                    grams=request.grams,
-                    contexto=contexto,
-                    idioma=idioma,
-                )
-            else:
-                calculo_estruturado = self._calcular_lista_estruturada(
-                    requests=structured_requests,
-                    contexto=contexto,
-                    idioma=idioma,
-                )
+            calculo_estruturado = self._calcular_requests_estruturados(
+                requests=structured_requests,
+                contexto=contexto,
+                idioma=idioma,
+                texto_original=texto_value,
+            )
             if calculo_estruturado is not None:
                 self._logger.info(
                     "calorias_texto.completed",
@@ -200,6 +191,52 @@ class CaloriasTextoService:
                 confianca_media=confianca_media,
             ),
             extraido_em=datetime.now(timezone.utc),
+        )
+
+    def calcular_itens_estruturados(
+        self,
+        *,
+        itens: list[dict[str, Any]],
+        contexto: str = "calcular_calorias_texto",
+        idioma: str = "pt-BR",
+        texto_original: str | None = None,
+    ) -> CaloriasTextoResponse | None:
+        requests = _normalize_structured_food_requests(itens)
+        if not requests:
+            raise ServiceError(
+                "Campo 'itens' deve conter ao menos um alimento com consulta e gramas validos.",
+                status_code=400,
+            )
+        return self._calcular_requests_estruturados(
+            requests=requests,
+            contexto=contexto,
+            idioma=idioma,
+            texto_original=texto_original,
+        )
+
+    def _calcular_requests_estruturados(
+        self,
+        *,
+        requests: list[_StructuredFoodRequest],
+        contexto: str,
+        idioma: str,
+        texto_original: str | None = None,
+    ) -> CaloriasTextoResponse | None:
+        if not requests:
+            return None
+        if len(requests) == 1:
+            request = requests[0]
+            return self._calcular_item_unico_estruturado(
+                texto_original=texto_original or request.descricao_original,
+                food_query=request.food_query,
+                grams=request.grams,
+                contexto=contexto,
+                idioma=idioma,
+            )
+        return self._calcular_lista_estruturada(
+            requests=requests,
+            contexto=contexto,
+            idioma=idioma,
         )
 
     def _calcular_item_unico_estruturado(
@@ -1209,6 +1246,59 @@ def _extract_structured_food_request_from_segment(segment: str) -> _StructuredFo
         food_query=food_query,
         grams=grams,
     )
+
+
+def _normalize_structured_food_requests(items: list[dict[str, Any]]) -> list[_StructuredFoodRequest]:
+    requests: list[_StructuredFoodRequest] = []
+    for raw_item in items:
+        if not isinstance(raw_item, dict):
+            continue
+
+        food_query = _to_optional_str(
+            _first_present_value(
+                raw_item,
+                "food_query",
+                "consulta_canonica",
+                "canonical_query",
+                "alimento",
+                "nome_alimento",
+                "food",
+                "food_name",
+            )
+        )
+        if not food_query:
+            continue
+
+        grams = _to_optional_float(
+            _first_present_value(
+                raw_item,
+                "grams",
+                "gramas",
+                "quantidade_estimada_gramas",
+                "estimated_grams",
+                "quantidade_gramas",
+                "amount_grams",
+            )
+        )
+        if grams is None or grams <= 0:
+            continue
+
+        descricao_original = _to_optional_str(
+            _first_present_value(
+                raw_item,
+                "descricao_original",
+                "original_description",
+            )
+        ) or f"{_format_grams_text(grams)} de {food_query}"
+
+        requests.append(
+            _StructuredFoodRequest(
+                descricao_original=descricao_original,
+                food_query=food_query,
+                grams=grams,
+            )
+        )
+    return requests
 
 
 def _extract_single_food_query(prompt: str) -> str | None:
