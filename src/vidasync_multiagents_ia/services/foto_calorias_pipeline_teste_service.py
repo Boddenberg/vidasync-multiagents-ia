@@ -98,9 +98,9 @@ class FotoCaloriasPipelineTesteService:
             raise ServiceError("Nao foi possivel montar texto para calculo de calorias a partir da imagem.", status_code=422)
 
         t2 = perf_counter()
-        calorias_texto = self._calorias_service.calcular(
-            texto=texto_calorias,
-            contexto="calcular_calorias_texto",
+        calorias_texto, modo_calculo_calorias = self._calcular_calorias_da_composicao(
+            composicao=estimativa_porcoes.resultado_porcoes.itens,
+            texto_calorias=texto_calorias,
             idioma=idioma,
         )
         nome_prato_aplicado = _aplicar_nome_prato_no_calorias(
@@ -130,6 +130,7 @@ class FotoCaloriasPipelineTesteService:
                 "warnings": len(warnings),
                 "nome_prato_detectado": nome_prato_detectado,
                 "nome_prato_aplicado": nome_prato_aplicado,
+                "modo_calculo_calorias": modo_calculo_calorias,
                 "identificar_nome_prato_ms": round(nome_prato_ms, 4) if nome_prato_ms is not None else None,
                 "duracao_total_ms": round(total_ms, 4),
             },
@@ -190,6 +191,33 @@ class FotoCaloriasPipelineTesteService:
         )
         return response
 
+    def _calcular_calorias_da_composicao(
+        self,
+        *,
+        composicao: list[ItemAlimentoEstimado],
+        texto_calorias: str,
+        idioma: str,
+    ) -> tuple[CaloriasTextoResponse, str]:
+        structured_items = _montar_itens_estruturados_para_calorias(composicao)
+        if structured_items and hasattr(self._calorias_service, "calcular_itens_estruturados"):
+            calculo_estruturado = self._calorias_service.calcular_itens_estruturados(  # type: ignore[attr-defined]
+                itens=structured_items,
+                contexto="calcular_calorias_texto",
+                idioma=idioma,
+                texto_original=texto_calorias,
+            )
+            if calculo_estruturado is not None:
+                return calculo_estruturado, "estrutura_por_ingrediente"
+
+        return (
+            self._calorias_service.calcular(
+                texto=texto_calorias,
+                contexto="calcular_calorias_texto",
+                idioma=idioma,
+            ),
+            "texto_livre_fallback",
+        )
+
 
 def _run_timed(func: Callable[..., Any], *args: Any, **kwargs: Any) -> tuple[Any, float]:
     started = perf_counter()
@@ -223,7 +251,7 @@ def _aplicar_nome_prato_no_calorias(
 ) -> bool:
     if not _deve_aplicar_nome_prato(nome_prato_foto):
         return False
-    if not calorias_texto.itens:
+    if len(calorias_texto.itens) != 1:
         return False
 
     nome_prato = _extract_nome_prato(nome_prato_foto)
@@ -248,6 +276,36 @@ def _montar_texto_para_calorias(itens: list[ItemAlimentoEstimado]) -> str:
 
         partes.append(f"{_format_grams(quantidade_estimada_gramas)} g de {alimento}")
     return "; ".join(partes)
+
+
+def _montar_itens_estruturados_para_calorias(itens: list[ItemAlimentoEstimado]) -> list[dict[str, Any]]:
+    structured: list[dict[str, Any]] = []
+    for item in itens:
+        quantidade_estimada_gramas = item.quantidade_estimada_gramas
+        if quantidade_estimada_gramas is None or quantidade_estimada_gramas <= 0:
+            return []
+
+        food_query = (item.consulta_canonica or item.nome_alimento).strip()
+        descricao_original = _montar_descricao_original_item(item)
+        if not food_query:
+            return []
+
+        structured.append(
+            {
+                "descricao_original": descricao_original,
+                "consulta_canonica": food_query,
+                "quantidade_estimada_gramas": quantidade_estimada_gramas,
+            }
+        )
+    return structured
+
+
+def _montar_descricao_original_item(item: ItemAlimentoEstimado) -> str:
+    nome = (item.nome_alimento or item.consulta_canonica).strip()
+    quantidade_estimada_gramas = item.quantidade_estimada_gramas
+    if quantidade_estimada_gramas is None or quantidade_estimada_gramas <= 0:
+        return nome
+    return f"{_format_grams(quantidade_estimada_gramas)} g de {nome}"
 
 
 def _format_grams(value: float) -> str:
