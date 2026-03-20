@@ -37,6 +37,11 @@ class _FonteCaloriasCandidate:
     proteina_g: float | None
     carboidratos_g: float | None
     lipidios_g: float | None
+    calorias_kcal_100g: float | None
+    proteina_g_100g: float | None
+    carboidratos_g_100g: float | None
+    lipidios_g_100g: float | None
+    base_calculo: str | None
     confianca: float
     detalhes: str | None = None
 
@@ -44,6 +49,19 @@ class _FonteCaloriasCandidate:
         return {
             "fonte": self.fonte,
             "item": self.item,
+            "base_calculo": self.base_calculo,
+            "por_100g": {
+                "calorias_kcal": self.calorias_kcal_100g,
+                "proteina_g": self.proteina_g_100g,
+                "carboidratos_g": self.carboidratos_g_100g,
+                "lipidios_g": self.lipidios_g_100g,
+            },
+            "ajustado": {
+                "calorias_kcal": self.calorias_kcal,
+                "proteina_g": self.proteina_g,
+                "carboidratos_g": self.carboidratos_g,
+                "lipidios_g": self.lipidios_g,
+            },
             "calorias_kcal": self.calorias_kcal,
             "proteina_g": self.proteina_g,
             "carboidratos_g": self.carboidratos_g,
@@ -51,6 +69,21 @@ class _FonteCaloriasCandidate:
             "confianca": self.confianca,
             "detalhes": self.detalhes,
         }
+
+
+@dataclass(slots=True)
+class _StructuredFoodRequest:
+    descricao_original: str
+    food_query: str
+    grams: float
+
+
+@dataclass(slots=True)
+class _StructuredFoodLookup:
+    index: int
+    request: _StructuredFoodRequest
+    candidates: list[_FonteCaloriasCandidate]
+    warnings: list[str]
 
 
 class CaloriasTextoService:
@@ -104,15 +137,23 @@ class CaloriasTextoService:
             },
         )
 
-        single_food = _extract_single_food_request(texto_value)
-        if single_food is not None:
-            calculo_estruturado = self._calcular_item_unico_estruturado(
-                texto_original=texto_value,
-                food_query=single_food[0],
-                grams=single_food[1],
-                contexto=contexto,
-                idioma=idioma,
-            )
+        structured_requests = _extract_structured_food_requests(texto_value)
+        if structured_requests is not None:
+            if len(structured_requests) == 1:
+                request = structured_requests[0]
+                calculo_estruturado = self._calcular_item_unico_estruturado(
+                    texto_original=request.descricao_original,
+                    food_query=request.food_query,
+                    grams=request.grams,
+                    contexto=contexto,
+                    idioma=idioma,
+                )
+            else:
+                calculo_estruturado = self._calcular_lista_estruturada(
+                    requests=structured_requests,
+                    contexto=contexto,
+                    idioma=idioma,
+                )
             if calculo_estruturado is not None:
                 self._logger.info(
                     "calorias_texto.completed",
@@ -150,6 +191,7 @@ class CaloriasTextoService:
             warnings=warnings,
             fontes_consultadas=[],
             selecao_fonte=None,
+            selecoes_fontes=[],
             agente=AgenteCaloriasTexto(
                 contexto="calcular_calorias_texto",
                 nome_agente="agente_calculo_calorias_texto",
@@ -192,6 +234,16 @@ class CaloriasTextoService:
             grams=grams,
             idioma=idioma,
         )
+        if selected is None or selection.pode_responder is False:
+            self._logger.info(
+                "calorias_texto.structured_deferred_to_llm",
+                extra={
+                    "food_query": food_query,
+                    "grams": grams,
+                    "justificativa": selection.justificativa if selection is not None else None,
+                },
+            )
+            return None
         warnings.extend(selection_warnings)
         self._logger.info(
             "calorias_texto.structured_selected",
@@ -209,22 +261,23 @@ class CaloriasTextoService:
         )
 
         quantity_text = _format_grams_text(grams) if _contains_explicit_grams(texto_original) else None
+        calculado = _calculate_candidate_portion(candidate=selected, grams=grams)
         item = ItemCaloriasTexto(
             descricao_original=texto_original,
             alimento=selected.item,
             quantidade_texto=quantity_text,
-            calorias_kcal=selected.calorias_kcal,
-            proteina_g=selected.proteina_g,
-            carboidratos_g=selected.carboidratos_g,
-            lipidios_g=selected.lipidios_g,
+            calorias_kcal=calculado["calorias_kcal"],
+            proteina_g=calculado["proteina_g"],
+            carboidratos_g=calculado["carboidratos_g"],
+            lipidios_g=calculado["lipidios_g"],
             confianca=selected.confianca,
             observacoes=selected.detalhes,
         )
         totais = TotaisCaloriasTexto(
-            calorias_kcal=selected.calorias_kcal,
-            proteina_g=selected.proteina_g,
-            carboidratos_g=selected.carboidratos_g,
-            lipidios_g=selected.lipidios_g,
+            calorias_kcal=calculado["calorias_kcal"],
+            proteina_g=calculado["proteina_g"],
+            carboidratos_g=calculado["carboidratos_g"],
+            lipidios_g=calculado["lipidios_g"],
         )
         fontes_consultadas = [
             FonteCaloriasConsulta(
@@ -248,7 +301,8 @@ class CaloriasTextoService:
             totais=totais,
             warnings=warnings,
             fontes_consultadas=fontes_consultadas,
-            selecao_fonte=selection,
+            selecao_fonte=selection.model_copy(update={"descricao_original": texto_original}),
+            selecoes_fontes=[selection.model_copy(update={"descricao_original": texto_original})],
             agente=AgenteCaloriasTexto(
                 contexto="calcular_calorias_texto",
                 nome_agente="agente_calculo_calorias_texto",
@@ -258,6 +312,290 @@ class CaloriasTextoService:
             ),
             extraido_em=datetime.now(timezone.utc),
         )
+
+    def _calcular_lista_estruturada(
+        self,
+        *,
+        requests: list[_StructuredFoodRequest],
+        contexto: str,
+        idioma: str,
+    ) -> CaloriasTextoResponse | None:
+        lookups = self._coletar_lookups_estruturados(requests)
+        selections, selection_warnings = self._selecionar_lote_com_agente(lookups=lookups, idioma=idioma)
+        if selections is None:
+            if not all(lookup.candidates for lookup in lookups):
+                return None
+            selections = {
+                lookup.index: SelecaoFonteCalorias(
+                    descricao_original=lookup.request.descricao_original,
+                    pode_responder=True,
+                    fonte_escolhida=max(lookup.candidates, key=_candidate_score).fonte,
+                    confianca=max(lookup.candidates, key=_candidate_score).confianca,
+                    justificativa="Selecao deterministica por indisponibilidade do agente em lote.",
+                    agente_seletor_acionado=False,
+                )
+                for lookup in lookups
+            }
+            selection_warnings.append("Agente seletor em lote indisponivel; aplicado fallback deterministico.")
+
+        if any(selection.pode_responder is not True for selection in selections.values()):
+            self._logger.info(
+                "calorias_texto.structured_batch_deferred_to_llm",
+                extra={
+                    "itens": len(requests),
+                    "selecoes_preview": preview_json(
+                        [selection.model_dump(exclude_none=True) for _, selection in sorted(selections.items())],
+                        max_chars=self._settings.log_internal_max_body_chars,
+                    ),
+                },
+            )
+            return None
+
+        items: list[ItemCaloriasTexto] = []
+        fontes_consultadas: list[FonteCaloriasConsulta] = []
+        warnings: list[str] = []
+        selecoes_fontes: list[SelecaoFonteCalorias] = []
+
+        for lookup in lookups:
+            selection = selections.get(lookup.index)
+            if selection is None:
+                return None
+
+            selected = _match_candidate_by_source(lookup.candidates, selection.fonte_escolhida)
+            selection_for_response = selection.model_copy(
+                update={"descricao_original": lookup.request.descricao_original}
+            )
+            if selected is None:
+                if not lookup.candidates:
+                    return None
+                selected = max(lookup.candidates, key=_candidate_score)
+                selection_for_response = selection_for_response.model_copy(
+                    update={
+                        "pode_responder": True,
+                        "fonte_escolhida": selected.fonte,
+                        "confianca": selected.confianca,
+                        "justificativa": (
+                            selection.justificativa
+                            or "Fonte invalida retornada pelo agente; aplicado fallback deterministico."
+                        ),
+                        "agente_seletor_acionado": False,
+                    }
+                )
+                warnings.append(
+                    f"Agente seletor retornou fonte invalida para '{lookup.request.descricao_original}'; "
+                    "aplicado fallback deterministico."
+                )
+
+            warnings.extend(lookup.warnings)
+            calculado = _calculate_candidate_portion(candidate=selected, grams=lookup.request.grams)
+            items.append(
+                ItemCaloriasTexto(
+                    descricao_original=lookup.request.descricao_original,
+                    alimento=selected.item,
+                    quantidade_texto=(
+                        _format_grams_text(lookup.request.grams)
+                        if _contains_explicit_grams(lookup.request.descricao_original)
+                        else None
+                    ),
+                    calorias_kcal=calculado["calorias_kcal"],
+                    proteina_g=calculado["proteina_g"],
+                    carboidratos_g=calculado["carboidratos_g"],
+                    lipidios_g=calculado["lipidios_g"],
+                    confianca=selected.confianca,
+                    observacoes=selected.detalhes,
+                )
+            )
+            selecoes_fontes.append(selection_for_response)
+            fontes_consultadas.extend(
+                [
+                    FonteCaloriasConsulta(
+                        fonte=candidate.fonte,
+                        item=candidate.item,
+                        calorias_kcal=candidate.calorias_kcal,
+                        proteina_g=candidate.proteina_g,
+                        carboidratos_g=candidate.carboidratos_g,
+                        lipidios_g=candidate.lipidios_g,
+                        confianca=candidate.confianca,
+                        detalhes=_merge_lookup_details(
+                            lookup.request.descricao_original,
+                            candidate.detalhes,
+                        ),
+                    )
+                    for candidate in _order_candidates(lookup.candidates)
+                ]
+            )
+
+        warnings.extend(selection_warnings)
+        totais = TotaisCaloriasTexto(
+            calorias_kcal=_sum_values([item.calorias_kcal for item in items]),
+            proteina_g=_sum_values([item.proteina_g for item in items]),
+            carboidratos_g=_sum_values([item.carboidratos_g for item in items]),
+            lipidios_g=_sum_values([item.lipidios_g for item in items]),
+        )
+        confianca_media = _confianca_media_itens(items)
+
+        return CaloriasTextoResponse(
+            contexto=contexto,
+            idioma=idioma,
+            texto="; ".join(request.descricao_original for request in requests),
+            itens=items,
+            totais=totais,
+            warnings=warnings,
+            fontes_consultadas=fontes_consultadas,
+            selecao_fonte=None,
+            selecoes_fontes=selecoes_fontes,
+            agente=AgenteCaloriasTexto(
+                contexto="calcular_calorias_texto",
+                nome_agente="agente_calculo_calorias_texto",
+                status="parcial" if warnings else "sucesso",
+                modelo=self._settings.openai_model,
+                confianca_media=confianca_media,
+            ),
+            extraido_em=datetime.now(timezone.utc),
+        )
+
+    def _coletar_lookups_estruturados(
+        self,
+        requests: list[_StructuredFoodRequest],
+    ) -> list[_StructuredFoodLookup]:
+        if not requests:
+            return []
+
+        lookups: list[_StructuredFoodLookup] = []
+        max_workers = min(len(requests), 4)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                submit_with_context(
+                    executor,
+                    self._coletar_lookup_estruturado,
+                    index=index,
+                    request=request,
+                ): index
+                for index, request in enumerate(requests)
+            }
+            for future in as_completed(futures):
+                lookups.append(future.result())
+        return sorted(lookups, key=lambda lookup: lookup.index)
+
+    def _coletar_lookup_estruturado(
+        self,
+        *,
+        index: int,
+        request: _StructuredFoodRequest,
+    ) -> _StructuredFoodLookup:
+        candidates, warnings = self._consultar_fontes_em_paralelo(
+            food_query=request.food_query,
+            grams=request.grams,
+        )
+        self._logger.info(
+            "calorias_texto.structured_batch_candidates",
+            extra={
+                "index": index,
+                "descricao_original": request.descricao_original,
+                "food_query": request.food_query,
+                "grams": request.grams,
+                "candidates": len(candidates),
+                "candidates_preview": preview_json(
+                    [candidate.to_dict() for candidate in _order_candidates(candidates)],
+                    max_chars=self._settings.log_internal_max_body_chars,
+                ),
+            },
+        )
+        return _StructuredFoodLookup(
+            index=index,
+            request=request,
+            candidates=candidates,
+            warnings=warnings,
+        )
+
+    def _selecionar_lote_com_agente(
+        self,
+        *,
+        lookups: list[_StructuredFoodLookup],
+        idioma: str,
+    ) -> tuple[dict[int, SelecaoFonteCalorias] | None, list[str]]:
+        system_prompt = (
+            "Voce e um agente seletor de confianca nutricional para multiplos alimentos. "
+            "Recebera varios itens com seus candidatos estruturados e deve decidir item a item "
+            "se o sistema pode responder com base apenas nesses dados, sem inferir macros. "
+            "Se puder responder para um item, escolha a fonte mais coerente e confiavel para ele. "
+            "Retorne somente JSON valido sem markdown."
+        )
+        payload = {
+            "idioma": idioma,
+            "itens": [
+                {
+                    "indice": lookup.index,
+                    "descricao_original": lookup.request.descricao_original,
+                    "consulta": lookup.request.food_query,
+                    "gramas": lookup.request.grams,
+                    "candidatos": [candidate.to_dict() for candidate in lookup.candidates],
+                }
+                for lookup in lookups
+            ],
+        }
+        user_prompt = (
+            "Analise cada item individualmente.\n"
+            "Retorne JSON com a chave itens.\n"
+            "Cada item deve ter: indice, pode_responder, fonte_escolhida, confianca, justificativa.\n"
+            "Use pode_responder=true somente quando houver dados estruturados suficientes e coerentes para "
+            "o calculo proporcional daquele item.\n"
+            "Se qualquer item parecer distante do alimento pedido ou sem base suficiente, marque esse item com "
+            "pode_responder=false.\n\n"
+            f"Entrada:\n{payload}"
+        )
+        try:
+            response = self._client.generate_json_from_text(
+                model=self._settings.openai_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        except (APIConnectionError, APIError, ValueError):
+            self._logger.exception(
+                "calorias_texto.selector_batch_agent.failed",
+                extra={"itens": len(lookups)},
+            )
+            return None, []
+
+        raw_items = response.get("itens") or response.get("items")
+        if not isinstance(raw_items, list):
+            return None, []
+
+        selections: dict[int, SelecaoFonteCalorias] = {}
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            index = _to_optional_int(_first_present_value(raw_item, "indice", "index"))
+            can_answer = _to_optional_bool(
+                _first_present_value(
+                    raw_item,
+                    "pode_responder",
+                    "can_answer",
+                    "can_respond",
+                    "responder",
+                )
+            )
+            if index is None or can_answer is None:
+                continue
+
+            selections[index] = SelecaoFonteCalorias(
+                descricao_original=_resolve_lookup_description(lookups, index),
+                pode_responder=can_answer,
+                fonte_escolhida=_normalize_source_name(
+                    _first_present_value(raw_item, "fonte_escolhida", "source", "selected_source")
+                ),
+                confianca=_to_optional_float(raw_item.get("confianca") or raw_item.get("confidence")),
+                justificativa=_to_optional_str(
+                    raw_item.get("justificativa")
+                    or raw_item.get("justification")
+                    or raw_item.get("motivo")
+                ),
+                agente_seletor_acionado=True,
+            )
+
+        if len(selections) != len(lookups):
+            return None, []
+        return selections, []
 
     def _consultar_fontes_em_paralelo(
         self,
@@ -310,6 +648,7 @@ class CaloriasTextoService:
     def _consultar_fonte_taco(self, *, food_query: str, grams: float) -> _FonteCaloriasCandidate | None:
         response = self._taco_online_service.get_food(query=food_query, grams=grams)
         adjusted = response.ajustado
+        per_100g = response.por_100g
         if not _has_core_macros(
             energy=adjusted.energia_kcal,
             protein=adjusted.proteina_g,
@@ -334,6 +673,11 @@ class CaloriasTextoService:
             proteina_g=adjusted.proteina_g,
             carboidratos_g=adjusted.carboidratos_g,
             lipidios_g=adjusted.lipidios_g,
+            calorias_kcal_100g=per_100g.energia_kcal,
+            proteina_g_100g=per_100g.proteina_g,
+            carboidratos_g_100g=per_100g.carboidratos_g,
+            lipidios_g_100g=per_100g.lipidios_g,
+            base_calculo=response.base_calculo or "100 gramas",
             confianca=confidence,
             detalhes=details,
         )
@@ -345,6 +689,7 @@ class CaloriasTextoService:
             return None
 
         adjusted = best_product.ajustado
+        per_100g = best_product.por_100g
         if not _has_core_macros(
             energy=adjusted.energia_kcal,
             protein=adjusted.proteina_g,
@@ -373,6 +718,11 @@ class CaloriasTextoService:
             proteina_g=adjusted.proteina_g,
             carboidratos_g=adjusted.carboidratos_g,
             lipidios_g=adjusted.lipidios_g,
+            calorias_kcal_100g=per_100g.energia_kcal,
+            proteina_g_100g=per_100g.proteina_g,
+            carboidratos_g_100g=per_100g.carboidratos_g,
+            lipidios_g_100g=per_100g.lipidios_g,
+            base_calculo="100 gramas",
             confianca=confidence,
             detalhes=details,
         )
@@ -384,17 +734,7 @@ class CaloriasTextoService:
         food_query: str,
         grams: float,
         idioma: str,
-    ) -> tuple[_FonteCaloriasCandidate, SelecaoFonteCalorias, list[str]]:
-        if len(candidates) == 1:
-            selected = candidates[0]
-            selection = SelecaoFonteCalorias(
-                fonte_escolhida=selected.fonte,
-                confianca=selected.confianca,
-                justificativa="Somente uma fonte retornou dados estruturados.",
-                agente_seletor_acionado=False,
-            )
-            return selected, selection, [f"Somente a fonte {selected.fonte} retornou dados estruturados."]
-
+    ) -> tuple[_FonteCaloriasCandidate | None, SelecaoFonteCalorias, list[str]]:
         warning = ""
         selection = self._selecionar_com_agente(
             candidates=candidates,
@@ -403,7 +743,11 @@ class CaloriasTextoService:
             idioma=idioma,
         )
         if selection is not None:
+            if selection.pode_responder is False:
+                return None, selection, []
             selected = _match_candidate_by_source(candidates, selection.fonte_escolhida)
+            if selected is None and len(candidates) == 1:
+                selected = candidates[0]
             if selected is not None:
                 return selected, selection, []
             warning = "Agente seletor retornou fonte invalida; aplicado fallback deterministico."
@@ -412,6 +756,7 @@ class CaloriasTextoService:
 
         fallback = max(candidates, key=_candidate_score)
         fallback_selection = SelecaoFonteCalorias(
+            pode_responder=True,
             fonte_escolhida=fallback.fonte,
             confianca=fallback.confianca,
             justificativa="Selecao deterministica por completude e confianca dos macros.",
@@ -430,13 +775,25 @@ class CaloriasTextoService:
     ) -> SelecaoFonteCalorias | None:
         system_prompt = (
             "Voce e um agente seletor de confianca nutricional. "
-            "Recebera resultados de duas fontes e deve escolher a fonte mais coerente. "
+            "Recebera candidatos nutricionais estruturados e deve decidir se o sistema pode responder "
+            "com base apenas nesses dados, sem inferir macros. "
+            "Se puder responder, escolha a fonte mais coerente e confiavel. "
+            "Se nao puder responder com seguranca, informe que nao pode responder. "
             "Retorne somente JSON valido sem markdown."
         )
-        payload = {"consulta": food_query, "gramas": grams, "idioma": idioma, "candidatos": [c.to_dict() for c in candidates]}
+        payload = {
+            "consulta": food_query,
+            "gramas": grams,
+            "idioma": idioma,
+            "candidatos": [c.to_dict() for c in candidates],
+        }
         user_prompt = (
-            "Escolha a melhor fonte considerando coerencia do item, completude dos macros e confianca.\n"
-            "Retorne JSON com chaves: fonte_escolhida, confianca, justificativa.\n\n"
+            "Analise se a aplicacao consegue responder de forma deterministica com os dados estruturados recebidos.\n"
+            "Considere que o calculo proporcional sera feito pela aplicacao usando os valores por 100 g.\n"
+            "Retorne JSON com chaves: pode_responder, fonte_escolhida, confianca, justificativa.\n"
+            "Use pode_responder=true somente quando houver pelo menos uma fonte coerente com a consulta e com dados "
+            "suficientes para o calculo proporcional.\n"
+            "Se os candidatos parecerem distantes do alimento pedido, insuficientes ou incoerentes, retorne pode_responder=false.\n\n"
             f"Entrada:\n{payload}"
         )
         try:
@@ -452,13 +809,23 @@ class CaloriasTextoService:
             )
             return None
 
-        selected_source = _normalize_source_name(
-            response.get("fonte_escolhida") or response.get("source") or response.get("selected_source")
+        can_answer = _to_optional_bool(
+            _first_present_value(
+                response,
+                "pode_responder",
+                "can_answer",
+                "can_respond",
+                "responder",
+            )
         )
-        if selected_source is None:
+        selected_source = _normalize_source_name(
+            _first_present_value(response, "fonte_escolhida", "source", "selected_source")
+        )
+        if can_answer is None:
             return None
 
         return SelecaoFonteCalorias(
+            pode_responder=can_answer,
             fonte_escolhida=selected_source,
             confianca=_to_optional_float(response.get("confianca") or response.get("confidence")),
             justificativa=_to_optional_str(response.get("justificativa") or response.get("justification") or response.get("motivo")),
@@ -593,6 +960,44 @@ def _to_optional_float(value: Any) -> float | None:
         return None
 
 
+def _to_optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if not isinstance(value, str):
+        return None
+
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except ValueError:
+        return None
+
+
+def _to_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"true", "1", "sim", "yes", "y", "pode", "can"}:
+        return True
+    if normalized in {"false", "0", "nao", "não", "no", "n", "nao_pode", "cannot"}:
+        return False
+    return None
+
+
 def _to_str_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -600,6 +1005,26 @@ def _to_str_list(value: Any) -> list[str]:
         stripped = value.strip()
         return [stripped] if stripped else []
     return []
+
+
+def _first_present_value(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload:
+            return payload[key]
+    return None
+
+
+def _resolve_lookup_description(lookups: list[_StructuredFoodLookup], index: int) -> str | None:
+    for lookup in lookups:
+        if lookup.index == index:
+            return lookup.request.descricao_original
+    return None
+
+
+def _merge_lookup_details(descricao_original: str, details: str | None) -> str:
+    if details:
+        return f"Solicitacao: {descricao_original}. {details}"
+    return f"Solicitacao: {descricao_original}."
 
 
 def _confianca_media_itens(itens: list[ItemCaloriasTexto]) -> float | None:
@@ -742,13 +1167,48 @@ def _normalize_source_name(value: Any) -> str | None:
 def _extract_single_food_request(text: str) -> tuple[str, float] | None:
     if ";" in text or "\n" in text:
         return None
-    food_query = _extract_single_food_query(text)
+    parsed = _extract_structured_food_request_from_segment(text)
+    if parsed is None:
+        return None
+    return parsed.food_query, parsed.grams
+
+
+def _extract_structured_food_requests(text: str) -> list[_StructuredFoodRequest] | None:
+    segments = _split_food_request_segments(text)
+    requests: list[_StructuredFoodRequest] = []
+    for segment in segments:
+        parsed = _extract_structured_food_request_from_segment(segment)
+        if parsed is None:
+            return None
+        requests.append(parsed)
+    return requests or None
+
+
+def _split_food_request_segments(text: str) -> list[str]:
+    normalized = text.strip()
+    if not normalized:
+        return []
+    parts = re.split(r";+|\n+|,(?=\s*\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b)", normalized)
+    segments = [_clean_segment_text(part) for part in parts]
+    return [segment for segment in segments if segment]
+
+
+def _clean_segment_text(segment: str) -> str:
+    return segment.strip().strip("-").strip("•").strip()
+
+
+def _extract_structured_food_request_from_segment(segment: str) -> _StructuredFoodRequest | None:
+    food_query = _extract_single_food_query(segment)
     if not food_query:
         return None
     if _looks_like_multi_food_query(food_query):
         return None
-    grams = _extract_grams(text)
-    return food_query, grams
+    grams = _extract_grams(segment)
+    return _StructuredFoodRequest(
+        descricao_original=segment.strip(),
+        food_query=food_query,
+        grams=grams,
+    )
 
 
 def _extract_single_food_query(prompt: str) -> str | None:
@@ -815,4 +1275,23 @@ def _has_core_macros(
     fat: float | None,
 ) -> bool:
     return any(value is not None for value in (energy, protein, carbs, fat))
+
+
+def _calculate_candidate_portion(candidate: _FonteCaloriasCandidate, *, grams: float) -> dict[str, float | None]:
+    return {
+        "calorias_kcal": _scale_from_100g(candidate.calorias_kcal_100g, grams, fallback=candidate.calorias_kcal),
+        "proteina_g": _scale_from_100g(candidate.proteina_g_100g, grams, fallback=candidate.proteina_g),
+        "carboidratos_g": _scale_from_100g(
+            candidate.carboidratos_g_100g,
+            grams,
+            fallback=candidate.carboidratos_g,
+        ),
+        "lipidios_g": _scale_from_100g(candidate.lipidios_g_100g, grams, fallback=candidate.lipidios_g),
+    }
+
+
+def _scale_from_100g(value: float | None, grams: float, *, fallback: float | None) -> float | None:
+    if value is None:
+        return fallback
+    return round(value * (grams / 100.0), 4)
 
