@@ -120,6 +120,7 @@ class _FakeFotoAlimentosService:
 class _FakeCaloriasTextoService:
     def __init__(self) -> None:
         self.texto_recebido: str | None = None
+        self.structured_items_recebidos: list[dict[str, object]] | None = None
 
     def calcular(
         self,
@@ -157,6 +158,50 @@ class _FakeCaloriasTextoService:
             extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
         )
 
+    def calcular_itens_estruturados(
+        self,
+        *,
+        itens: list[dict[str, object]],
+        contexto: str = "calcular_calorias_texto",
+        idioma: str = "pt-BR",
+        texto_original: str | None = None,
+    ) -> CaloriasTextoResponse:
+        self.structured_items_recebidos = itens
+        return CaloriasTextoResponse(
+            contexto=contexto,
+            idioma=idioma,
+            texto=texto_original or "texto estruturado",
+            itens=[
+                ItemCaloriasTexto(
+                    descricao_original="120 g de Arroz branco cozido",
+                    alimento="arroz branco cozido",
+                    quantidade_texto="120 g",
+                    calorias_kcal=156.0,
+                ),
+                ItemCaloriasTexto(
+                    descricao_original="90 g de Frango grelhado",
+                    alimento="frango grelhado",
+                    quantidade_texto="90 g",
+                    calorias_kcal=198.0,
+                ),
+            ],
+            totais=TotaisCaloriasTexto(
+                calorias_kcal=354.0,
+                proteina_g=33.0,
+                carboidratos_g=34.0,
+                lipidios_g=6.0,
+            ),
+            warnings=[],
+            agente=AgenteCaloriasTexto(
+                contexto=contexto,
+                nome_agente="agente_calculo_calorias_texto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                confianca_media=0.88,
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
 
 class _FakeFotoAlimentosServiceNomeBaixaConfianca(_FakeFotoAlimentosService):
     def identificar_nome_prato_da_foto(
@@ -185,6 +230,46 @@ class _FakeFotoAlimentosServiceNomeBaixaConfianca(_FakeFotoAlimentosService):
         )
 
 
+class _FakeFotoAlimentosServiceTodosItensComGramas(_FakeFotoAlimentosService):
+    def estimar_porcoes_do_prato(
+        self,
+        *,
+        imagem_url: str,
+        contexto: str = "estimar_porcoes_do_prato",
+        idioma: str = "pt-BR",
+    ) -> EstimativaPorcoesFotoResponse:
+        return EstimativaPorcoesFotoResponse(
+            contexto=contexto,
+            imagem_url=imagem_url,
+            resultado_porcoes=ResultadoPorcoesFoto(
+                itens=[
+                    ItemAlimentoEstimado(
+                        nome_alimento="Arroz branco cozido",
+                        consulta_canonica="arroz branco cozido",
+                        quantidade_estimada_gramas=120,
+                        confianca=0.83,
+                    ),
+                    ItemAlimentoEstimado(
+                        nome_alimento="Frango grelhado",
+                        consulta_canonica="frango grelhado",
+                        quantidade_estimada_gramas=90,
+                        confianca=0.84,
+                    ),
+                ],
+                observacoes_gerais="estimativa visual",
+            ),
+            agente=ExecucaoAgenteFoto(
+                contexto="estimar_porcoes_do_prato",
+                nome_agente="agente_estimativa_porcoes",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                confianca=0.835,
+                saida={"itens": 2},
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
 def test_pipeline_foto_calorias_service_sucesso() -> None:
     calorias_service = _FakeCaloriasTextoService()
     service = FotoCaloriasPipelineTesteService(
@@ -201,6 +286,7 @@ def test_pipeline_foto_calorias_service_sucesso() -> None:
     assert result.composicao[0].nome_alimento == "Arroz branco cozido"
     assert result.composicao[1].nome_alimento == "Frango grelhado"
     assert calorias_service.texto_recebido == "120 g de Arroz branco cozido; Frango grelhado"
+    assert calorias_service.structured_items_recebidos is None
     assert result.calorias_texto.itens[0].alimento == "Poke de salmao"
     assert result.agente.etapas_executadas == ["identificar_foto", "estimar_porcoes", "calcular_calorias"]
     assert result.agente.status == "parcial"
@@ -222,6 +308,38 @@ def test_pipeline_foto_calorias_service_nao_sobrescreve_nome_com_baixa_confianca
 
     assert result.calorias_texto.itens[0].alimento == "arroz branco cozido"
     assert result.nome_prato_detectado == "Poke de salmao"
+
+
+def test_pipeline_foto_calorias_service_usa_calculo_estruturado_por_ingrediente_quando_todos_itens_tem_gramas() -> None:
+    calorias_service = _FakeCaloriasTextoService()
+    service = FotoCaloriasPipelineTesteService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        foto_service=_FakeFotoAlimentosServiceTodosItensComGramas(),  # type: ignore[arg-type]
+        calorias_service=calorias_service,  # type: ignore[arg-type]
+    )
+
+    result = service.executar_pipeline(imagem_url="https://example.com/refeicao.jpg")
+
+    assert calorias_service.texto_recebido is None
+    assert calorias_service.structured_items_recebidos == [
+        {
+            "descricao_original": "120 g de Arroz branco cozido",
+            "consulta_canonica": "arroz branco cozido",
+            "quantidade_estimada_gramas": 120,
+        },
+        {
+            "descricao_original": "90 g de Frango grelhado",
+            "consulta_canonica": "frango grelhado",
+            "quantidade_estimada_gramas": 90,
+        },
+    ]
+    assert result.texto_calorias == "120 g de Arroz branco cozido; 90 g de Frango grelhado"
+    assert [item.alimento for item in result.calorias_texto.itens] == [
+        "arroz branco cozido",
+        "frango grelhado",
+    ]
+    assert result.nome_prato_detectado == "Poke de salmao"
+    assert result.calorias_texto.totais.calorias_kcal == 354.0
 
 
 def test_pipeline_foto_calorias_service_tenta_mesmo_quando_nao_e_comida() -> None:
