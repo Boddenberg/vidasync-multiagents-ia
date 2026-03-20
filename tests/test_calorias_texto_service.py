@@ -26,8 +26,15 @@ class _FakeOpenAIClient:
 
 
 class _FakeTacoService:
-    def __init__(self, *, response: TacoOnlineFoodResponse | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        response: TacoOnlineFoodResponse | None = None,
+        responses_by_query: dict[str, TacoOnlineFoodResponse] | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self._response = response
+        self._responses_by_query = responses_by_query or {}
         self._error = error
         self.calls: list[tuple[str, float]] = []
 
@@ -35,13 +42,22 @@ class _FakeTacoService:
         self.calls.append((query or "", grams))
         if self._error is not None:
             raise self._error
+        if query is not None and query in self._responses_by_query:
+            return self._responses_by_query[query]
         assert self._response is not None
         return self._response
 
 
 class _FakeOpenFoodFactsService:
-    def __init__(self, *, response: OpenFoodFactsSearchResponse | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        response: OpenFoodFactsSearchResponse | None = None,
+        responses_by_query: dict[str, OpenFoodFactsSearchResponse] | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self._response = response
+        self._responses_by_query = responses_by_query or {}
         self._error = error
         self.calls: list[tuple[str, float]] = []
 
@@ -56,6 +72,8 @@ class _FakeOpenFoodFactsService:
         self.calls.append((query, grams))
         if self._error is not None:
             raise self._error
+        if query in self._responses_by_query:
+            return self._responses_by_query[query]
         assert self._response is not None
         assert page == 1
         assert page_size == 5
@@ -84,6 +102,41 @@ def _build_taco_response(*, grams: float, energy_kcal: float) -> TacoOnlineFoodR
         base_calculo="100 gramas",
         por_100g=per_100g,
         ajustado=adjusted,
+        extraido_em=datetime.now(timezone.utc),
+    )
+
+
+def _build_taco_response_from_per_100g(
+    *,
+    grams: float,
+    energy_kcal_100g: float,
+    adjusted_energy_kcal: float,
+    nome_alimento: str = "Arroz cozido",
+    slug: str = "arroz",
+    grupo_alimentar: str = "Cereais",
+    protein_g_100g: float = 2.5,
+    carbs_g_100g: float = 28.0,
+    fat_g_100g: float = 0.3,
+) -> TacoOnlineFoodResponse:
+    return TacoOnlineFoodResponse(
+        url_pagina=f"https://www.tabelatacoonline.com.br/tabela-nutricional/taco/{slug}",
+        slug=slug,
+        gramas=grams,
+        nome_alimento=nome_alimento,
+        grupo_alimentar=grupo_alimentar,
+        base_calculo="100 gramas",
+        por_100g=TacoOnlineNutrients(
+            energia_kcal=energy_kcal_100g,
+            proteina_g=protein_g_100g,
+            carboidratos_g=carbs_g_100g,
+            lipidios_g=fat_g_100g,
+        ),
+        ajustado=TacoOnlineNutrients(
+            energia_kcal=adjusted_energy_kcal,
+            proteina_g=1.0,
+            carboidratos_g=1.0,
+            lipidios_g=1.0,
+        ),
         extraido_em=datetime.now(timezone.utc),
     )
 
@@ -142,6 +195,7 @@ def test_calorias_texto_service_usa_fontes_em_paralelo_e_seletor() -> None:
     grams = 500.0
     openai_client = _FakeOpenAIClient(
         selector_payload={
+            "pode_responder": True,
             "fonte_escolhida": "OPEN_FOOD_FACTS",
             "confianca": 0.88,
             "justificativa": "Produto industrializado mais aderente ao item.",
@@ -160,10 +214,109 @@ def test_calorias_texto_service_usa_fontes_em_paralelo_e_seletor() -> None:
 
     assert len(result.fontes_consultadas) == 2
     assert result.selecao_fonte is not None
+    assert result.selecao_fonte.pode_responder is True
     assert result.selecao_fonte.fonte_escolhida == "OPEN_FOOD_FACTS"
     assert result.itens[0].calorias_kcal == 225.0
     assert result.totais.calorias_kcal == 225.0
     assert len(openai_client.calls) == 1
+
+
+def test_calorias_texto_service_calcula_proporcionalmente_quando_llm_indica_que_pode_responder() -> None:
+    grams = 135.0
+    openai_client = _FakeOpenAIClient(
+        selector_payload={
+            "pode_responder": True,
+            "fonte_escolhida": "TABELA_TACO_ONLINE",
+            "confianca": 0.93,
+            "justificativa": "Ha dados estruturados suficientes para calcular proporcionalmente.",
+        }
+    )
+    service = CaloriasTextoService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        client=openai_client,  # type: ignore[arg-type]
+        taco_online_service=_FakeTacoService(
+            response=_build_taco_response_from_per_100g(
+                grams=grams,
+                energy_kcal_100g=128.0,
+                adjusted_energy_kcal=999.0,
+                protein_g_100g=2.5,
+                carbs_g_100g=28.0,
+                fat_g_100g=0.3,
+            )
+        ),  # type: ignore[arg-type]
+        open_food_facts_service=_FakeOpenFoodFactsService(
+            error=ServiceError("nao encontrado", status_code=404)
+        ),  # type: ignore[arg-type]
+    )
+
+    result = service.calcular(texto="135 g de arroz")
+
+    assert result.selecao_fonte is not None
+    assert result.selecao_fonte.pode_responder is True
+    assert result.selecao_fonte.fonte_escolhida == "TABELA_TACO_ONLINE"
+    assert result.itens[0].alimento == "Arroz cozido"
+    assert result.itens[0].calorias_kcal == 172.8
+    assert result.itens[0].proteina_g == 3.375
+    assert result.itens[0].carboidratos_g == 37.8
+    assert result.itens[0].lipidios_g == 0.405
+    assert result.totais.calorias_kcal == 172.8
+    assert len(openai_client.calls) == 1
+
+
+def test_calorias_texto_service_mantem_fluxo_atual_quando_llm_indica_que_nao_pode_responder() -> None:
+    llm_payload = {
+        "itens": [
+            {
+                "descricao_original": "200 g de comida nada a ver",
+                "alimento": "comida nada a ver",
+                "quantidade_texto": "200 g",
+                "calorias_kcal": 210.0,
+                "proteina_g": 8.0,
+                "carboidratos_g": 25.0,
+                "lipidios_g": 9.0,
+                "confianca": 0.41,
+                "observacoes": "Estimativa inferida pela LLM.",
+            }
+        ],
+        "totais": {
+            "calorias_kcal": 210.0,
+            "proteina_g": 8.0,
+            "carboidratos_g": 25.0,
+            "lipidios_g": 9.0,
+        },
+        "warnings": ["Base estruturada insuficiente; aplicado fallback com inferencia."],
+    }
+    openai_client = _FakeOpenAIClient(
+        selector_payload={
+            "pode_responder": False,
+            "confianca": 0.22,
+            "justificativa": "Os candidatos estruturados nao parecem corresponder ao item pedido.",
+        },
+        llm_payload=llm_payload,
+    )
+    service = CaloriasTextoService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        client=openai_client,  # type: ignore[arg-type]
+        taco_online_service=_FakeTacoService(
+            response=_build_taco_response_from_per_100g(
+                grams=200.0,
+                energy_kcal_100g=128.0,
+                adjusted_energy_kcal=256.0,
+            )
+        ),  # type: ignore[arg-type]
+        open_food_facts_service=_FakeOpenFoodFactsService(
+            response=_build_off_response(query="comida nada a ver", grams=200.0, energy_kcal=400.0)
+        ),  # type: ignore[arg-type]
+    )
+
+    result = service.calcular(texto="200 g de comida nada a ver")
+
+    assert result.selecao_fonte is None
+    assert result.fontes_consultadas == []
+    assert result.itens[0].alimento == "comida nada a ver"
+    assert result.totais.calorias_kcal == 210.0
+    assert result.warnings == ["Base estruturada insuficiente; aplicado fallback com inferencia."]
+    assert len(openai_client.calls) == 2
 
 
 def test_calorias_texto_service_faz_fallback_para_llm_quando_fontes_falham() -> None:
@@ -209,17 +362,51 @@ def test_calorias_texto_service_faz_fallback_para_llm_quando_fontes_falham() -> 
     assert len(openai_client.calls) == 1
 
 
-def test_calorias_texto_service_nao_consulta_fontes_para_texto_combinado() -> None:
-    llm_payload = {
-        "itens": [
-            {"alimento": "arroz", "calorias_kcal": 130},
-            {"alimento": "feijao", "calorias_kcal": 90},
-        ],
-        "totais": {"calorias_kcal": 220},
-        "warnings": [],
-    }
-    openai_client = _FakeOpenAIClient(llm_payload=llm_payload)
-    taco = _FakeTacoService(error=ServiceError("nao encontrado", status_code=404))
+def test_calorias_texto_service_trata_lista_estruturada_item_a_item_e_soma_totais() -> None:
+    openai_client = _FakeOpenAIClient(
+        selector_payload={
+            "itens": [
+                {
+                    "indice": 0,
+                    "pode_responder": True,
+                    "fonte_escolhida": "TABELA_TACO_ONLINE",
+                    "confianca": 0.93,
+                    "justificativa": "Arroz com base suficiente para calculo.",
+                },
+                {
+                    "indice": 1,
+                    "pode_responder": True,
+                    "fonte_escolhida": "TABELA_TACO_ONLINE",
+                    "confianca": 0.91,
+                    "justificativa": "Feijao com base suficiente para calculo.",
+                },
+            ]
+        }
+    )
+    taco = _FakeTacoService(
+        responses_by_query={
+            "arroz": _build_taco_response_from_per_100g(
+                grams=120.0,
+                energy_kcal_100g=128.0,
+                adjusted_energy_kcal=153.6,
+                nome_alimento="Arroz cozido",
+                slug="arroz",
+                protein_g_100g=2.5,
+                carbs_g_100g=28.0,
+                fat_g_100g=0.3,
+            ),
+            "feijao": _build_taco_response_from_per_100g(
+                grams=80.0,
+                energy_kcal_100g=76.0,
+                adjusted_energy_kcal=60.8,
+                nome_alimento="Feijao cozido",
+                slug="feijao",
+                protein_g_100g=4.8,
+                carbs_g_100g=13.6,
+                fat_g_100g=0.5,
+            ),
+        }
+    )
     off = _FakeOpenFoodFactsService(error=ServiceError("nao encontrado", status_code=404))
     service = CaloriasTextoService(
         settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
@@ -231,10 +418,78 @@ def test_calorias_texto_service_nao_consulta_fontes_para_texto_combinado() -> No
     result = service.calcular(texto="120 g de arroz; 80 g de feijao")
 
     assert len(result.itens) == 2
-    assert result.totais.calorias_kcal == 220.0
-    assert taco.calls == []
-    assert off.calls == []
+    assert result.selecao_fonte is None
+    assert len(result.selecoes_fontes) == 2
+    assert result.totais.calorias_kcal == 214.4
+    assert result.totais.proteina_g == 6.84
+    assert result.totais.carboidratos_g == 44.48
+    assert result.totais.lipidios_g == 0.76
+    assert taco.calls == [("arroz", 120.0), ("feijao", 80.0)]
+    assert off.calls == [("arroz", 120.0), ("feijao", 80.0)]
     assert len(openai_client.calls) == 1
+
+
+def test_calorias_texto_service_faz_fallback_para_fluxo_atual_quando_lista_tem_item_sem_resposta_confiavel() -> None:
+    llm_payload = {
+        "itens": [
+            {"alimento": "arroz", "calorias_kcal": 150.0},
+            {"alimento": "feijao", "calorias_kcal": 70.0},
+        ],
+        "totais": {"calorias_kcal": 220.0},
+        "warnings": ["Lista caiu no fluxo atual por falta de confianca em um dos itens."],
+    }
+    openai_client = _FakeOpenAIClient(
+        selector_payload={
+            "itens": [
+                {
+                    "indice": 0,
+                    "pode_responder": True,
+                    "fonte_escolhida": "TABELA_TACO_ONLINE",
+                },
+                {
+                    "indice": 1,
+                    "pode_responder": False,
+                    "justificativa": "Item com base incoerente.",
+                },
+            ]
+        },
+        llm_payload=llm_payload,
+    )
+    taco = _FakeTacoService(
+        responses_by_query={
+            "arroz": _build_taco_response_from_per_100g(
+                grams=120.0,
+                energy_kcal_100g=128.0,
+                adjusted_energy_kcal=153.6,
+                nome_alimento="Arroz cozido",
+                slug="arroz",
+            ),
+            "feijao": _build_taco_response_from_per_100g(
+                grams=80.0,
+                energy_kcal_100g=76.0,
+                adjusted_energy_kcal=60.8,
+                nome_alimento="Feijao cozido",
+                slug="feijao",
+            ),
+        }
+    )
+    off = _FakeOpenFoodFactsService(error=ServiceError("nao encontrado", status_code=404))
+    service = CaloriasTextoService(
+        settings=Settings(openai_api_key="test-key", openai_model="gpt-4o-mini"),
+        client=openai_client,  # type: ignore[arg-type]
+        taco_online_service=taco,  # type: ignore[arg-type]
+        open_food_facts_service=off,  # type: ignore[arg-type]
+    )
+
+    result = service.calcular(texto="120 g de arroz; 80 g de feijao")
+
+    assert result.selecao_fonte is None
+    assert result.selecoes_fontes == []
+    assert result.totais.calorias_kcal == 220.0
+    assert result.warnings == ["Lista caiu no fluxo atual por falta de confianca em um dos itens."]
+    assert taco.calls == [("arroz", 120.0), ("feijao", 80.0)]
+    assert off.calls == [("arroz", 120.0), ("feijao", 80.0)]
+    assert len(openai_client.calls) == 2
 
 
 def test_calorias_texto_service_off_prioriza_produto_aderente_ao_nome() -> None:
