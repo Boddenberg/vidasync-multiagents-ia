@@ -11,6 +11,173 @@ Backend FastAPI para orquestracao de agentes de IA focados em:
 - Observabilidade completa: logs estruturados JSON/texto, request/response middleware, metricas.
 - Suite de testes automatizados cobrindo rotas, servicos e parsers.
 
+## Nova Frente: Chat Conversacional De Nutricao
+Objetivo desta frente: abrir um chat conversacional focado apenas em nutricao e alimentacao dentro do contexto do app, sem criar uma segunda arquitetura paralela.
+
+### Mapa Rapido
+| Bloco | Direcao recomendada |
+|---|---|
+| Entrada HTTP | `[REUSE]` padrao atual de `api/routes` + `api/dependencies` |
+| Contratos | `[REUSE]` `OpenAIChatRequest` e `OpenAIChatResponse` na primeira etapa |
+| Orquestracao | `[REUSE]` `AiOrchestrator` + engine atual (`langgraph` ou `legacy`) |
+| Roteamento | `[REUSE]` `ChatConversacionalRouterService` com ajuste pequeno e controlado |
+| Tools | `[REUSE]` `ChatToolExecutor` + tools nutricionais ja existentes |
+| Memoria | `[REUSE]` `ChatMemoryService` |
+| RAG | `[REUSE]` `rag/vector_store.py` + `knowledge/` |
+| Observabilidade | `[REUSE]` middleware, logging estruturado e metricas atuais |
+| Nova camada | `[NEW]` somente uma rota dedicada e um service fino para essa frente |
+| Evitar agora | `[AVOID]` multiagentes, subgrafos novos, planners, novos clients, nova stack RAG |
+
+```mermaid
+flowchart LR
+    A["POST /v1/nutri/chat"] --> B["NutriChatService"]
+    B --> C{"Prompt esta no escopo\nnutricao/alimentacao?"}
+    C -- "nao" --> D["Resposta curta:\nfora do escopo do app"]
+    C -- "sim" --> E["AiOrchestrator atual"]
+    E --> F["ChatConversacionalRouterService"]
+    F --> G["ChatToolExecutor"]
+    F --> H["RAG knowledge/"]
+    E --> I["ChatMemoryService"]
+```
+
+### 1. Diagnostico Do Que Ja Existe
+| Area | O que ja existe no projeto | Evidencia no codigo | Leitura para a nova frente |
+|---|---|---|---|
+| Entrada HTTP | Rota + dependencia para chat | `api/routes/openai_chat.py`, `api/dependencies.py` | Ja existe padrao pronto para expor uma nova frente sem reinventar wiring |
+| Service de entrada | Service fino com logs, metricas e contrato estavel | `services/openai_chat_service.py` | O ponto de entrada atual ja separa bem HTTP de orquestracao |
+| Orquestracao | Porta estavel + engine `langgraph`/`legacy` | `services/orchestration/chat_orchestrator.py`, `services/orchestration/chat_factory.py` | Nao precisa nascer um novo motor para esse chat |
+| Grafo atual | Fluxo simples: entrada -> intencao -> roteamento -> pipeline -> resposta | `services/orchestration/chat_langgraph_orchestrator.py` | O grafo atual ja e simples o bastante para evolucao gradual |
+| Fallback sequencial | Orquestrador legado compativel | `services/orchestration/chat_legacy_orchestrator.py` | Mantem rollback simples sem mudar contrato |
+| Deteccao de intencao | Heuristica deterministica e barata | `services/chat_intencao_service.py` | Bom ponto de partida antes de pensar em algo mais sofisticado |
+| Roteamento de chat | Router central com handlers por intencao | `services/chat_conversacional_router_service.py` | Ja concentra a regra de negocio do chat em um lugar so |
+| Tools nutricionais | Executor unico + registry + contratos estaveis | `services/chat_tools/executor.py`, `services/chat_tools/factory.py`, `services/chat_tools/contracts.py` | Ja existe uma base consistente para tool calling simples |
+| Dominio nutricional | Tools de calorias, macros, IMC, receitas, substituicoes e conhecimento | `services/chat_tools/nutricao_tools.py` | O nucleo funcional do chat nutricional ja existe |
+| Memoria | Memoria curta + resumo acumulado | `services/chat_memory_service.py` | Ja atende bem uma primeira frente conversacional |
+| RAG | Fachada simples para ingestao e retrieval | `rag/vector_store.py`, `rag/service.py`, `knowledge/` | Ja existe infra de conhecimento nutricional local |
+| Integracoes | TBCA, TACO Online, Open Food Facts, OpenAI | `clients/`, `services/tbca_service.py`, `services/taco_online_service.py`, `services/open_food_facts_service.py` | Nao faz sentido criar novos clients para a mesma finalidade |
+| Observabilidade | Logging estruturado, middleware HTTP e metricas | `main.py`, `observability/logging_setup.py`, `observability/metrics.py` | A nova frente deve entrar no mesmo padrao operacional |
+| Cobertura de testes | Suite forte para chat, tools, memoria e metricas | `tests/test_openai_chat_*`, `tests/test_chat_*`, `tests/test_rag_*` | Existe base real para evoluir sem voar cego |
+
+#### Partes Que Devem Permanecer Intactas
+- `[KEEP]` `POST /v1/openai/chat` e seus contratos, caso ja exista consumo por app/BFF.
+- `[KEEP]` `AiOrchestrator` como porta estavel entre service e engine.
+- `[KEEP]` `ChatToolExecutor` e os contratos `ChatToolExecutionInput` / `ChatToolExecutionOutput`.
+- `[KEEP]` `ChatMemoryService`, `rag/vector_store.py` e os clients nutricionais.
+- `[KEEP]` middleware HTTP, metricas e formatacao de logs estruturados.
+- `[KEEP]` `knowledge/` como base unica de conhecimento nutricional do app.
+
+### 2. O Que Reaproveitar
+| Reaproveitar | Como usar na nova frente | Motivo |
+|---|---|---|
+| `OpenAIChatRequest` / `OpenAIChatResponse` | Usar na etapa inicial da nova rota | Evita criar schema duplicado sem necessidade real |
+| `OpenAIChatService` como referencia de entrada | Copiar o padrao de logging/metricas e manter a camada fina | O formato atual ja esta limpo e facil de manter |
+| `build_chat_ai_orchestrator(...)` | Delegar para o orquestrador atual | Reuso maximo sem novo grafo |
+| `ChatConversacionalRouterService` | Reusar handlers e pipelines ja existentes | Centraliza dominio do chat em um ponto so |
+| `ChatIntencaoService` | Reaproveitar deteccao inicial e complementar apenas se faltar cobertura | Mais simples do que introduzir classificador novo |
+| `ChatToolExecutor` + `build_chat_tool_executor(...)` | Reusar tool calling nutricional | Ja tem logs, metricas e tratamento de erro |
+| `ChatMemoryService` | Reusar `conversation_id`, resumo e contexto curto | Evita criar memoria paralela |
+| `retrieve_context(...)` / `build_context_for_query(...)` | Reusar RAG atual | Ja consulta `knowledge/` e ja esta testado |
+| `CaloriasTextoService` | Continuar como base de calorias/macros | Regra nutricional ja consolidada |
+| `TBCAService`, `TacoOnlineService`, `OpenFoodFactsService` | Manter como fontes estruturadas | Nao duplicar integracoes nem logica de consulta |
+| `logging_setup.py` + `metrics.py` | Seguir exatamente o mesmo padrao de telemetria | Uniformidade operacional e menor custo de suporte |
+
+### 3. O Que Criar De Novo
+Minimo recomendado para abrir a nova frente sem duplicar infraestrutura:
+
+| Item novo | Necessidade | Observacao |
+|---|---|---|
+| `api/routes/nutri_chat.py` | Expor uma frente separada no app | Justificado porque voce quer um chat separado do fluxo atual |
+| `services/nutri_chat_service.py` | Ser a camada fina de entrada dessa frente | Deve validar escopo, logar e delegar para o que ja existe |
+| Logs dedicados `nutri_chat.*` | Dar visibilidade operacional da nova frente | Reusar o mesmo formato estruturado atual |
+| Testes dedicados da rota/service | Garantir que o chat bloqueia fora de escopo e reaproveita o resto | Sem isso, a nova frente pode parecer simples e quebrar facil |
+
+#### O Que Nao Criar Agora
+- `[AVOID]` novo schema so porque a rota mudou.
+- `[AVOID]` novo orquestrador so para "ter um chat separado".
+- `[AVOID]` nova camada de tools ou novo registry.
+- `[AVOID]` novo repositorio de conhecimento ou segunda base vetorial.
+- `[AVOID]` dependencias novas como planner, judge, guardrail framework ou agent framework adicional.
+
+#### Ajuste Pequeno E Necessario No Comportamento Atual
+O ponto que hoje impede reuso total sem cuidado e o handler `conversa_geral`: no fluxo atual ele pode responder qualquer tema. Para a nova frente nutricional, o mais simples e seguro e:
+
+1. barrar prompts claramente fora de nutricao logo na entrada do novo service;
+2. quando o pedido estiver em nutricao, continuar reaproveitando o roteamento e as tools atuais;
+3. nao abrir um fallback generico fora do dominio do app.
+
+### 4. Estrutura Minima Sugerida
+```text
+src/vidasync_multiagents_ia/
+  api/
+    routes/
+      openai_chat.py          # manter intacto
+      nutri_chat.py           # novo, frente dedicada
+  services/
+    openai_chat_service.py    # manter intacto
+    nutri_chat_service.py     # novo, camada fina
+    chat_conversacional_router_service.py
+    chat_intencao_service.py
+    chat_memory_service.py
+    chat_tools/
+  rag/
+  knowledge/
+```
+
+Fluxo minimo sugerido:
+
+```text
+request -> rota dedicada -> NutriChatService -> validacao de escopo
+       -> orquestrador atual -> router atual -> tools/RAG/memoria atuais
+       -> resposta
+```
+
+#### Etapas Pequenas E Implementaveis
+1. Criar `POST /v1/nutri/chat` reaproveitando request/response atuais.
+2. Criar `NutriChatService` com logs estruturados de inicio, bloqueio de escopo, sucesso e falha.
+3. Delegar para o orquestrador atual sem mexer no contrato publico do chat existente.
+4. Adicionar testes cobrindo:
+   - prompt nutricional valido
+   - prompt fora de escopo
+   - reuso de memoria
+   - preservacao de logs/metricas
+
+#### Logs Estruturados Esperados Nessa Frente
+- `nutri_chat.started`
+- `nutri_chat.scope_blocked`
+- `nutri_chat.completed`
+- `nutri_chat.failed`
+
+Campos recomendados no `extra`:
+- `conversation_id`
+- `prompt_chars`
+- `usar_memoria`
+- `intencao_detectada`
+- `pipeline`
+- `handler`
+- `status`
+- `fora_do_escopo`
+- `duration_ms`
+
+### 5. Riscos De Complexidade Desnecessaria
+| Risco | Por que seria excesso agora | Decisao recomendada |
+|---|---|---|
+| Novo grafo so para a frente nutricional | Duplica comportamento que ja existe no orquestrador atual | Reusar o grafo atual |
+| Novo sistema de memoria | Cria duas verdades para a mesma conversa | Reusar `ChatMemoryService` |
+| Novo registry de tools | Duplica contratos e observabilidade | Reusar `ChatToolExecutor` |
+| Novo RAG dedicado | Duplica ingestao, indexacao e manutencao da base | Reusar `knowledge/` e `rag/vector_store.py` |
+| Novo cliente de LLM ou framework extra | Aumenta custo de manutencao sem ganho imediato | Ficar com OpenAI SDK + stack atual |
+| Multiagentes/subgrafos/planner | Complexidade alta para um problema ainda simples | Nao usar nesta etapa |
+| Criar schemas paralelos cedo demais | Aumenta superficie de contrato sem prova de necessidade | Reusar schemas atuais primeiro |
+| Mexer no endpoint atual em vez de isolar a frente nova | Risco de regressao em consumidores existentes | Criar rota dedicada e manter o fluxo atual intacto |
+
+Resumo pratico:
+
+```text
+[REUSE] route pattern + dependencies + service pattern + orchestrator + router + tools + memory + RAG + observability
+[NEW]   uma rota dedicada + um service fino + testes da nova frente
+[AVOID] novo motor, nova stack, novo RAG, novos clients, multiagentes
+```
+
 ## Contrato Alvo App-BFF-Agentes
 - Documento oficial de contrato e arquitetura alvo: `docs/CONTRATOS_ARQUITETURA_ALVO.md`.
 
