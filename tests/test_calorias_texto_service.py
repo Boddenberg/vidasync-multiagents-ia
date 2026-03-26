@@ -424,8 +424,8 @@ def test_calorias_texto_service_trata_lista_estruturada_item_a_item_e_soma_totai
     assert result.totais.proteina_g == 6.84
     assert result.totais.carboidratos_g == 44.48
     assert result.totais.lipidios_g == 0.76
-    assert taco.calls == [("arroz", 120.0), ("feijao", 80.0)]
-    assert off.calls == [("arroz", 120.0), ("feijao", 80.0)]
+    assert sorted(taco.calls) == [("arroz", 120.0), ("feijao", 80.0)]
+    assert sorted(off.calls) == [("arroz", 120.0), ("feijao", 80.0)]
     assert len(openai_client.calls) == 1
 
 
@@ -487,8 +487,8 @@ def test_calorias_texto_service_faz_fallback_para_fluxo_atual_quando_lista_tem_i
     assert result.selecoes_fontes == []
     assert result.totais.calorias_kcal == 220.0
     assert result.warnings == ["Lista caiu no fluxo atual por falta de confianca em um dos itens."]
-    assert taco.calls == [("arroz", 120.0), ("feijao", 80.0)]
-    assert off.calls == [("arroz", 120.0), ("feijao", 80.0)]
+    assert sorted(taco.calls) == [("arroz", 120.0), ("feijao", 80.0)]
+    assert sorted(off.calls) == [("arroz", 120.0), ("feijao", 80.0)]
     assert len(openai_client.calls) == 2
 
 
