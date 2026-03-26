@@ -3,6 +3,13 @@ from vidasync_multiagents_ia.schemas.audio_transcricao import (
     AgenteTranscricaoAudio,
     AudioTranscricaoResponse,
 )
+from vidasync_multiagents_ia.schemas.chat_judge import (
+    ChatJudgeCriterionAssessment,
+    ChatJudgeCriterionName,
+    ChatJudgeCriteriaAssessment,
+    ChatJudgeEvaluationInput,
+    ChatJudgeLLMResponse,
+)
 from vidasync_multiagents_ia.schemas.calorias_texto import (
     AgenteCaloriasTexto,
     CaloriasTextoResponse,
@@ -125,6 +132,11 @@ __all__ = [
     "AIRouterRequest",
     "AIRouterResponse",
     "AgenteCaloriasTexto",
+    "ChatJudgeCriterionAssessment",
+    "ChatJudgeCriterionName",
+    "ChatJudgeCriteriaAssessment",
+    "ChatJudgeEvaluationInput",
+    "ChatJudgeLLMResponse",
     "AgenteTranscricaoAudio",
     "CaloriasTextoResponse",
     "FonteCaloriasConsulta",
