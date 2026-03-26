@@ -1,8 +1,23 @@
-from fastapi import APIRouter, Depends
+from time import perf_counter
 
-from vidasync_multiagents_ia.api.dependencies import get_openai_chat_service
-from vidasync_multiagents_ia.schemas import OpenAIChatRequest, OpenAIChatResponse
-from vidasync_multiagents_ia.services import OpenAIChatService
+from fastapi import APIRouter, BackgroundTasks, Depends
+
+from vidasync_multiagents_ia.api.dependencies import (
+    get_chat_judge_async_service,
+    get_chat_judge_service,
+    get_openai_chat_service,
+)
+from vidasync_multiagents_ia.schemas import (
+    ChatJudgeEvaluationInput,
+    ChatJudgeResult,
+    OpenAIChatRequest,
+    OpenAIChatResponse,
+)
+from vidasync_multiagents_ia.services import (
+    ChatJudgeAsyncService,
+    ChatJudgeService,
+    OpenAIChatService,
+)
 
 router = APIRouter(prefix="/v1/openai", tags=["openai"])
 
@@ -10,7 +25,9 @@ router = APIRouter(prefix="/v1/openai", tags=["openai"])
 @router.post("/chat", response_model=OpenAIChatResponse)
 def openai_chat(
     payload: OpenAIChatRequest,
+    background_tasks: BackgroundTasks,
     service: OpenAIChatService = Depends(get_openai_chat_service),
+    judge_async_service: ChatJudgeAsyncService = Depends(get_chat_judge_async_service),
 ) -> OpenAIChatResponse:
     plano_anexo = (
         payload.plano_anexo.model_dump(exclude_none=True, exclude_defaults=True)
@@ -22,7 +39,8 @@ def openai_chat(
         if payload.refeicao_anexo
         else None
     )
-    return service.chat(
+    started = perf_counter()
+    response = service.chat(
         payload.prompt,
         conversation_id=payload.conversation_id,
         usar_memoria=payload.usar_memoria,
@@ -30,3 +48,24 @@ def openai_chat(
         plano_anexo=plano_anexo,
         refeicao_anexo=refeicao_anexo,
     )
+    duration_ms = (perf_counter() - started) * 1000.0
+    background_tasks.add_task(
+        judge_async_service.evaluate_chat_response,
+        prompt=payload.prompt,
+        response=response,
+        conversation_id=payload.conversation_id,
+        usar_memoria=payload.usar_memoria,
+        metadados_conversa=payload.metadados_conversa,
+        plano_anexo_presente=payload.plano_anexo is not None,
+        refeicao_anexo_presente=payload.refeicao_anexo is not None,
+        source_duration_ms=round(duration_ms, 4),
+    )
+    return response
+
+
+@router.post("/chat/judge", response_model=ChatJudgeResult)
+def judge_openai_chat(
+    payload: ChatJudgeEvaluationInput,
+    service: ChatJudgeService = Depends(get_chat_judge_service),
+) -> ChatJudgeResult:
+    return service.evaluate(payload)
