@@ -150,9 +150,13 @@ def test_router_direciona_pergunta_calorias_para_tool_calculo() -> None:
 
     result = service.route(prompt="Quantas calorias tem uma banana?", intencao=intencao)
 
-    assert result.roteamento.pipeline == "tool_calculo"
-    assert result.roteamento.handler == "handler_tool_calcular_calorias"
-    assert "89.0 kcal" in result.response
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_redirecionar_calorias"
+    assert "tela de calorias do app" in result.response
+    assert result.roteamento.metadados["feature_alvo"] == "contagem_calorias"
+    assert len(result.roteamento.acoes_ui) == 1
+    assert result.roteamento.acoes_ui[0].action_id == "open_calorie_counter"
+    assert result.roteamento.acoes_ui[0].target == "calorie_counter"
     assert result.roteamento.precisa_revisao is False
 
 
@@ -200,9 +204,11 @@ def test_router_direciona_pergunta_de_macros_para_tool_macros() -> None:
 
     result = service.route(prompt="Quais os macros de 1 banana?", intencao=intencao)
 
-    assert result.roteamento.pipeline == "tool_calculo"
-    assert result.roteamento.handler == "handler_tool_calcular_macros"
-    assert result.roteamento.metadados["tool_name"] == "calcular_macros"
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_redirecionar_calorias"
+    assert result.roteamento.metadados["feature_alvo"] == "contagem_calorias"
+    assert result.roteamento.acoes_ui[0].action_id == "open_calorie_counter"
+    assert "calorias ou macros" in result.response
 
 
 def test_router_direciona_cadastro_pratos_para_fluxo_dedicado() -> None:
@@ -219,11 +225,12 @@ def test_router_direciona_cadastro_pratos_para_fluxo_dedicado() -> None:
         intencao=intencao,
     )
 
-    assert result.roteamento.pipeline == "cadastro_pratos"
-    assert result.roteamento.handler == "handler_fluxo_cadastro_refeicoes"
-    assert result.roteamento.metadados["flow"] == "cadastro_refeicoes_texto_v1"
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_redirecionar_cadastro_pratos"
+    assert result.roteamento.metadados["feature_alvo"] == "cadastro_pratos"
+    assert result.roteamento.acoes_ui[0].action_id == "open_saved_dishes"
     assert result.roteamento.precisa_revisao is False
-    assert "Cadastro pronto" in result.response
+    assert "fluxo de cadastro do app" in result.response
 
 
 def test_router_nao_aplica_prompt_contextualizado_em_tool_deterministica() -> None:
@@ -473,9 +480,78 @@ def test_router_forca_intencao_refeicao_foto_quando_anexo_presente() -> None:
         },
     )
 
-    assert result.roteamento.pipeline == "cadastro_refeicoes"
-    assert result.roteamento.handler == "handler_cadastro_refeicao_foto"
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_redirecionar_refeicao_foto"
     assert result.roteamento.metadados["intencao_forcada_por_anexo"] is True
     assert result.roteamento.metadados["motivo_forcamento_anexo"] == "refeicao_anexo_imagem"
     assert result.roteamento.metadados["intencao_roteada"] == "registrar_refeicao_foto"
-    assert "Refeicao por foto processada" in result.response
+    assert result.roteamento.metadados["feature_alvo"] == "registro_refeicao_foto"
+    assert result.roteamento.acoes_ui[0].action_id == "open_meal_photo"
+    assert "foto do prato no app" in result.response
+
+
+def test_router_bloqueia_termo_improprio_em_pergunta_de_calorias() -> None:
+    service = _build_service()
+    intencao = IntencaoChatDetectada(
+        intencao="perguntar_calorias",
+        confianca=0.9,
+        contexto_roteamento="calcular_calorias_texto",
+        requer_fluxo_estruturado=True,
+    )
+
+    result = service.route(
+        prompt="Quero saber quantas calorias tem 200 gramas de cu",
+        intencao=intencao,
+    )
+
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_bloqueio_conteudo"
+    assert result.roteamento.metadados["guardrail_tipo"] == "bloqueio_conteudo"
+    assert result.roteamento.metadados["termo_bloqueado"] == "cu"
+    assert result.roteamento.acoes_ui == []
+    assert "termos sexualizados ou improprios" in result.response
+
+
+def test_router_redireciona_quantidade_fora_da_faixa_para_tela_estruturada() -> None:
+    service = _build_service()
+    intencao = IntencaoChatDetectada(
+        intencao="perguntar_calorias",
+        confianca=0.9,
+        contexto_roteamento="calcular_calorias_texto",
+        requer_fluxo_estruturado=True,
+    )
+
+    result = service.route(
+        prompt="Quantas calorias tem 200 quilos de abacate?",
+        intencao=intencao,
+    )
+
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_quantidade_fora_da_faixa"
+    assert result.roteamento.metadados["guardrail_tipo"] == "quantidade_fora_da_faixa"
+    assert result.roteamento.metadados["quantidade_detectada"] == 200.0
+    assert result.roteamento.metadados["unidade_detectada"] == "kg"
+    assert result.roteamento.acoes_ui[0].action_id == "open_calorie_counter"
+    assert "fora da faixa validada" in result.response
+
+
+def test_router_redireciona_hidratacao_para_fluxo_do_app() -> None:
+    service = _build_service()
+    intencao = IntencaoChatDetectada(
+        intencao="conversa_geral",
+        confianca=0.55,
+        contexto_roteamento="chat",
+        requer_fluxo_estruturado=False,
+    )
+
+    result = service.route(
+        prompt="Pode adicionar agua para mim?",
+        intencao=intencao,
+    )
+
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_redirecionar_hidratacao"
+    assert result.roteamento.metadados["feature_alvo"] == "hidratacao"
+    assert result.roteamento.acoes_ui[0].action_id == "open_hydration"
+    assert result.roteamento.acoes_ui[0].target == "hydration"
+    assert "area de hidratacao do app" in result.response

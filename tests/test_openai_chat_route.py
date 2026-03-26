@@ -4,6 +4,7 @@ from vidasync_multiagents_ia.api.dependencies import get_openai_chat_service
 from vidasync_multiagents_ia.main import app
 from vidasync_multiagents_ia.schemas import (
     ChatRoteamento,
+    ChatUIAction,
     IntencaoChatDetectada,
     OpenAIChatResponse,
 )
@@ -180,5 +181,61 @@ def test_openai_chat_route_repassa_refeicao_anexo() -> None:
         body = response.json()
         assert body["response"] == "Refeicao recebida."
         assert body["intencao_detectada"]["intencao"] == "registrar_refeicao_foto"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_openai_chat_route_retorna_acoes_ui_para_guardrail() -> None:
+    class _FakeOpenAIChatServiceGuardrail:
+        def chat(
+            self,
+            prompt: str,
+            *,
+            conversation_id: str | None = None,
+            usar_memoria: bool = True,
+            metadados_conversa: dict[str, str] | None = None,
+            plano_anexo: dict[str, object] | None = None,
+            refeicao_anexo: dict[str, object] | None = None,
+        ) -> OpenAIChatResponse:
+            assert prompt == "Quantas calorias tem 200 quilos de abacate?"
+            return OpenAIChatResponse(
+                model="gpt-4o-mini",
+                response="Use a tela de calorias do app.",
+                intencao_detectada=IntencaoChatDetectada(
+                    intencao="perguntar_calorias",
+                    confianca=0.93,
+                    contexto_roteamento="calcular_calorias_texto",
+                    requer_fluxo_estruturado=True,
+                ),
+                roteamento=ChatRoteamento(
+                    pipeline="guardrail_chat",
+                    handler="handler_guardrail_quantidade_fora_da_faixa",
+                    acoes_ui=[
+                        ChatUIAction(
+                            action_id="open_calorie_counter",
+                            label="Abrir calorias",
+                            target="calorie_counter",
+                            payload={"feature": "contagem_calorias"},
+                        )
+                    ],
+                    metadados={"guardrail_tipo": "quantidade_fora_da_faixa"},
+                ),
+            )
+
+    app.dependency_overrides[get_openai_chat_service] = lambda: _FakeOpenAIChatServiceGuardrail()
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/v1/openai/chat",
+            json={
+                "prompt": "Quantas calorias tem 200 quilos de abacate?",
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["roteamento"]["pipeline"] == "guardrail_chat"
+        assert body["roteamento"]["acoes_ui"][0]["action_id"] == "open_calorie_counter"
+        assert body["roteamento"]["acoes_ui"][0]["target"] == "calorie_counter"
     finally:
         app.dependency_overrides.clear()

@@ -10,6 +10,11 @@ class _FakeOpenAIClient:
         return "resposta simulada"
 
 
+class _FailIfLLMCalledClient:
+    def generate_text(self, *, model: str, prompt: str) -> str:
+        raise AssertionError("O LLM nao deveria ser chamado nesse cenario de guardrail.")
+
+
 def test_openai_chat_service_aplica_etapa_de_intencao() -> None:
     settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
     service = OpenAIChatService(
@@ -51,3 +56,22 @@ def test_openai_chat_service_reutiliza_memoria_por_conversation_id() -> None:
     assert second.conversation_id == "conv-teste"
     assert second.memoria is not None
     assert second.memoria.total_turnos == 4
+
+
+def test_openai_chat_service_redireciona_calorias_para_fluxo_estruturado() -> None:
+    settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
+    service = OpenAIChatService(
+        settings=settings,
+        client=_FailIfLLMCalledClient(),  # type: ignore[arg-type]
+        chat_intencao_service=ChatIntencaoService(),
+    )
+
+    result = service.chat("Quantas calorias tem 200 quilos de abacate?")
+
+    assert result.roteamento is not None
+    assert result.roteamento.pipeline == "guardrail_chat"
+    assert result.roteamento.handler == "handler_guardrail_quantidade_fora_da_faixa"
+    assert len(result.roteamento.acoes_ui) == 1
+    assert result.roteamento.acoes_ui[0].action_id == "open_calorie_counter"
+    assert result.roteamento.acoes_ui[0].target == "calorie_counter"
+    assert "tela de calorias do app" in result.response
