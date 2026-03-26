@@ -131,6 +131,7 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", json_pretty: bool =
     if _LOGGING_CONFIGURED:
         return
 
+    _try_reconfigure_stdout_for_unicode()
     log_level = _resolve_log_level(level)
     handler = logging.StreamHandler(sys.stdout)
     if fmt.lower() == "text":
@@ -155,6 +156,16 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", json_pretty: bool =
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     _LOGGING_CONFIGURED = True
+
+
+def _try_reconfigure_stdout_for_unicode() -> None:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (ValueError, OSError):
+        return
 
 
 def _resolve_log_level(value: str) -> int:
