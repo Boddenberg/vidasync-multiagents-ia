@@ -54,3 +54,31 @@ def test_json_formatter_usa_evento_do_extra_quando_disponivel() -> None:
     assert payload["extra"]["evento"] == "http.request.received"
     assert payload["extra"]["origem"] == "http"
     assert payload["extra"]["direcao"] == "request"
+
+
+def test_json_formatter_preserva_mensagem_customizada_quando_evento_vem_no_extra() -> None:
+    formatter = _JsonLogFormatter()
+    record = _build_record(
+        "✅ Ingestao RAG concluida.",
+        evento="rag.ingest.completed",
+    )
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["message"] == "✅ Ingestao RAG concluida."
+    assert payload["extra"]["evento"] == "rag.ingest.completed"
+    assert payload["extra"]["origem"] == "rag"
+    assert payload["extra"]["direcao"] == "end"
+
+
+def test_json_formatter_converte_preview_json_string_em_objeto() -> None:
+    formatter = _JsonLogFormatter()
+    record = _build_record(
+        "Resposta HTTP enviada pela API.",
+        evento="http.response.sent",
+        response_body_preview='{"ok":true,"items":[1,2]}',
+    )
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["extra"]["response_body_preview"] == {"ok": True, "items": [1, 2]}

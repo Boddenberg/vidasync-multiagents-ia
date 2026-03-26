@@ -207,7 +207,7 @@ def _normalize_message_and_extras(
     raw_message: str,
     extras: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    normalized_extras = dict(extras)
+    normalized_extras = _normalize_preview_fields(dict(extras))
     event = _resolve_event_code(raw_message=raw_message, extras=normalized_extras)
     if not event:
         return raw_message, normalized_extras
@@ -215,7 +215,33 @@ def _normalize_message_and_extras(
     normalized_extras.setdefault("evento", event)
     normalized_extras.setdefault("origem", _resolve_origin(event))
     normalized_extras.setdefault("direcao", _resolve_direction(event))
+    if raw_message and not _EVENT_CODE_PATTERN.match(raw_message):
+        return raw_message, normalized_extras
     return _event_to_human_message(event), normalized_extras
+
+
+def _normalize_preview_fields(extras: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, value in extras.items():
+        normalized[key] = _coerce_preview_value(key=key, value=value)
+    return normalized
+
+
+def _coerce_preview_value(*, key: str, value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+
+    if not key.endswith("_preview"):
+        return value
+
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "{[":
+        return value
+
+    try:
+        return json.loads(stripped)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return value
 
 
 def _resolve_event_code(*, raw_message: str, extras: dict[str, Any]) -> str | None:

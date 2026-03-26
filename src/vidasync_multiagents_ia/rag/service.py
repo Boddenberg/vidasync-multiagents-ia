@@ -52,9 +52,9 @@ class NutritionRagService:
         with self._lock:
             if self._ingested and not force_rebuild:
                 self._logger.info(
-                    "rag.ingest.skipped",
+                    "⏭️ Ingestao RAG ignorada; indice ja estava pronto.",
                     extra={
-                        "emoji": "⏭️",
+                        "evento": "rag.ingest.skipped",
                         "docs_dir": self._settings.vidasync_docs_dir,
                         "force_rebuild": force_rebuild,
                         "total_sources": self._last_summary.total_sources,
@@ -66,9 +66,9 @@ class NutritionRagService:
 
             started = perf_counter()
             self._logger.info(
-                "rag.ingest.started",
+                "📚 Ingestao RAG iniciada.",
                 extra={
-                    "emoji": "📚",
+                    "evento": "rag.ingest.started",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "force_rebuild": force_rebuild,
                     "chunk_size": self._chunker.chunk_size,
@@ -78,27 +78,27 @@ class NutritionRagService:
             )
             sources = self._loader.load_sources(docs_dir=self._settings.vidasync_docs_dir)
             self._logger.info(
-                "rag.ingest.loaded_sources",
+                "📄 Fontes do RAG carregadas.",
                 extra={
-                    "emoji": "📄",
+                    "evento": "rag.ingest.loaded_sources",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "total_sources": len(sources),
                 },
             )
             chunks = self._chunker.chunk_sources(sources=sources)
             self._logger.info(
-                "rag.ingest.chunked",
+                "✂️ Fontes do RAG fragmentadas em chunks.",
                 extra={
-                    "emoji": "✂️",
+                    "evento": "rag.ingest.chunked",
                     "total_sources": len(sources),
                     "total_chunks": len(chunks),
                 },
             )
             embeddings = self._embedder.embed_texts(texts=[chunk.text for chunk in chunks]) if chunks else []
             self._logger.info(
-                "rag.ingest.embeddings.completed",
+                "🧠 Embeddings do RAG gerados.",
                 extra={
-                    "emoji": "🧠",
+                    "evento": "rag.ingest.embeddings.completed",
                     "embedder": self._embedder.name,
                     "embeddings_count": len(embeddings),
                     "embedding_dimensions": len(embeddings[0]) if embeddings else 0,
@@ -106,9 +106,9 @@ class NutritionRagService:
             )
             self._index.rebuild(chunks=chunks, embeddings=embeddings)
             self._logger.info(
-                "rag.ingest.index.completed",
+                "🗂️ Indice vetorial do RAG atualizado.",
                 extra={
-                    "emoji": "🗂️",
+                    "evento": "rag.ingest.index.completed",
                     "indexed_chunks": len(chunks),
                     "vector_dimensions": self._index.dimensions,
                 },
@@ -121,9 +121,9 @@ class NutritionRagService:
                 vector_dimensions=self._index.dimensions,
             )
             self._logger.info(
-                "rag.ingest.completed",
+                "✅ Ingestao RAG concluida.",
                 extra={
-                    "emoji": "✅",
+                    "evento": "rag.ingest.completed",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "total_sources": len(sources),
                     "total_chunks": len(chunks),
