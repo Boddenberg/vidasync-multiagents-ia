@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     chat_judge_model: str = "gpt-4o-mini"
     chat_judge_storage_path: str = "build/chat_judge/chat_judge.sqlite3"
+    chat_judge_enabled: bool = True
+    chat_judge_chat_async_enabled: bool = True
+    chat_judge_supabase_table: str = "llm_judge_evaluations"
+    chat_judge_supabase_timeout_seconds: float = 20.0
     openai_audio_model: str = "gpt-4o-mini-transcribe"
     audio_max_upload_bytes: int = 8 * 1024 * 1024
     audio_recommended_max_seconds: int = 45

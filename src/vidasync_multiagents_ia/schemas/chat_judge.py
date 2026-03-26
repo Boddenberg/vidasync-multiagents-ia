@@ -103,6 +103,7 @@ class ChatJudgeLLMResponse(BaseModel):
 
 
 ChatJudgeDecision = Literal["approved", "rejected"]
+ChatJudgeStatus = Literal["pending", "completed", "failed"]
 
 
 class ChatJudgeCriterionWeights(BaseModel):
@@ -222,3 +223,64 @@ class ChatJudgePersistenceRecord(BaseModel):
     tone_of_voice_score: int = Field(ge=0, le=5)
     weighted_contributions: dict[ChatJudgeCriterionName, float]
     result_payload: dict[str, Any]
+
+
+class ChatJudgeTrackingRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(min_length=1)
+    created_at: datetime
+    updated_at: datetime
+    feature: str = Field(default="chat", min_length=1)
+    judge_status: ChatJudgeStatus
+    request_id: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+    user_id: str | None = None
+    idioma: str = "pt-BR"
+    intencao: str | None = None
+    pipeline: str | None = None
+    handler: str | None = None
+    source_model: str
+    source_prompt: str
+    source_response: str
+    source_duration_ms: float | None = Field(default=None, ge=0)
+    source_prompt_chars: int = Field(default=0, ge=0)
+    source_response_chars: int = Field(default=0, ge=0)
+    source_prompt_tokens: int | None = Field(default=None, ge=0)
+    source_completion_tokens: int | None = Field(default=None, ge=0)
+    source_total_tokens: int | None = Field(default=None, ge=0)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+    judge_model: str | None = None
+    judge_duration_ms: float | None = Field(default=None, ge=0)
+    judge_prompt_tokens: int | None = Field(default=None, ge=0)
+    judge_completion_tokens: int | None = Field(default=None, ge=0)
+    judge_total_tokens: int | None = Field(default=None, ge=0)
+    judge_overall_score: float | None = Field(default=None, ge=0, le=100)
+    judge_decision: ChatJudgeDecision | None = None
+    judge_summary: str | None = None
+    judge_scores: dict[ChatJudgeCriterionName, int] = Field(default_factory=dict)
+    judge_improvements: list[str] = Field(default_factory=list)
+    judge_rejection_reasons: list[ChatJudgeRejectionReason] = Field(default_factory=list)
+    judge_result: dict[str, Any] | None = None
+    judge_error: str | None = None
+
+    @field_validator(
+        "request_id",
+        "conversation_id",
+        "message_id",
+        "user_id",
+        "intencao",
+        "pipeline",
+        "handler",
+        "judge_model",
+        "judge_summary",
+        "judge_error",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional_tracking_text(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
