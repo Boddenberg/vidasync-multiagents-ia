@@ -15,6 +15,10 @@ from vidasync_multiagents_ia.services.chat_conversacional_router_service import 
 )
 from vidasync_multiagents_ia.services.chat_judge_approval import ChatJudgeApprovalService
 from vidasync_multiagents_ia.services.chat_judge_llm_client import ChatJudgeLLMClient
+from vidasync_multiagents_ia.services.chat_judge_mapper import (
+    map_chat_judge_result_to_persistence_record,
+)
+from vidasync_multiagents_ia.services.chat_judge_repository import ChatJudgeRepository
 from vidasync_multiagents_ia.services.chat_judge_scoring import ChatJudgeScoreCalculator
 from vidasync_multiagents_ia.services.chat_judge_service import ChatJudgeService
 from vidasync_multiagents_ia.services.chat_intencao_service import ChatIntencaoService
@@ -79,6 +83,8 @@ __all__ = [
     "ChatConversacionalRouterService",
     "ChatJudgeApprovalService",
     "ChatJudgeLLMClient",
+    "map_chat_judge_result_to_persistence_record",
+    "ChatJudgeRepository",
     "ChatJudgeScoreCalculator",
     "ChatJudgeService",
     "ChatIntencaoService",

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -189,3 +190,35 @@ class ChatJudgeResult(BaseModel):
     improvements: list[str] = Field(default_factory=list)
     score: ChatJudgeScoreResult
     approval: ChatJudgeApprovalResult
+
+
+class ChatJudgePersistenceRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(min_length=1)
+    created_at: datetime
+    model: str
+    request_id: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+    idioma: str = "pt-BR"
+    intencao: str | None = None
+    pipeline: str | None = None
+    handler: str | None = None
+    summary: str
+    improvements: list[str] = Field(default_factory=list)
+    overall_score: float = Field(ge=0, le=100)
+    decision: ChatJudgeDecision
+    approved: bool
+    rejection_reasons: list[ChatJudgeRejectionReason] = Field(default_factory=list)
+    coherence_score: int = Field(ge=0, le=5)
+    context_score: int = Field(ge=0, le=5)
+    correctness_score: int = Field(ge=0, le=5)
+    efficiency_score: int = Field(ge=0, le=5)
+    fidelity_score: int = Field(ge=0, le=5)
+    quality_score: int = Field(ge=0, le=5)
+    usefulness_score: int = Field(ge=0, le=5)
+    safety_score: int = Field(ge=0, le=5)
+    tone_of_voice_score: int = Field(ge=0, le=5)
+    weighted_contributions: dict[ChatJudgeCriterionName, float]
+    result_payload: dict[str, Any]

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     chat_judge_model: str = "gpt-4o-mini"
+    chat_judge_storage_path: str = "build/chat_judge/chat_judge.sqlite3"
     openai_audio_model: str = "gpt-4o-mini-transcribe"
     audio_max_upload_bytes: int = 8 * 1024 * 1024
     audio_recommended_max_seconds: int = 45
