@@ -6,6 +6,8 @@ from vidasync_multiagents_ia.services import (
     AIRouterService,
     CaloriasTextoService,
     AudioTranscricaoService,
+    ChatJudgeAsyncService,
+    ChatJudgeService,
     FotoCaloriasPipelineTesteService,
     FotoAlimentosService,
     FrasePorcoesService,
@@ -26,6 +28,16 @@ from vidasync_multiagents_ia.services import (
 @lru_cache(maxsize=1)
 def get_openai_chat_service() -> OpenAIChatService:
     return OpenAIChatService(settings=get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_chat_judge_service() -> ChatJudgeService:
+    return ChatJudgeService(settings=get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_chat_judge_async_service() -> ChatJudgeAsyncService:
+    return ChatJudgeAsyncService(settings=get_settings())
 
 
 @lru_cache(maxsize=1)

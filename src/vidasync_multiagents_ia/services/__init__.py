@@ -14,6 +14,7 @@ from vidasync_multiagents_ia.services.chat_conversacional_router_service import 
     ChatConversacionalRouterService,
 )
 from vidasync_multiagents_ia.services.chat_judge_approval import ChatJudgeApprovalService
+from vidasync_multiagents_ia.services.chat_judge_async_service import ChatJudgeAsyncService
 from vidasync_multiagents_ia.services.chat_judge_llm_client import ChatJudgeLLMClient
 from vidasync_multiagents_ia.services.chat_judge_mapper import (
     map_chat_judge_result_to_persistence_record,
@@ -21,6 +22,14 @@ from vidasync_multiagents_ia.services.chat_judge_mapper import (
 from vidasync_multiagents_ia.services.chat_judge_repository import ChatJudgeRepository
 from vidasync_multiagents_ia.services.chat_judge_scoring import ChatJudgeScoreCalculator
 from vidasync_multiagents_ia.services.chat_judge_service import ChatJudgeService
+from vidasync_multiagents_ia.services.chat_judge_supabase_repository import (
+    ChatJudgeSupabaseRepository,
+)
+from vidasync_multiagents_ia.services.chat_judge_tracking_mapper import (
+    build_completed_chat_judge_tracking_record,
+    build_failed_chat_judge_tracking_record,
+    build_pending_chat_judge_tracking_record,
+)
 from vidasync_multiagents_ia.services.chat_intencao_service import ChatIntencaoService
 from vidasync_multiagents_ia.services.chat_memory_service import (
     ChatMemoryBuildResult,
@@ -82,11 +91,13 @@ __all__ = [
     "ChatConversacionalRouteResult",
     "ChatConversacionalRouterService",
     "ChatJudgeApprovalService",
+    "ChatJudgeAsyncService",
     "ChatJudgeLLMClient",
     "map_chat_judge_result_to_persistence_record",
     "ChatJudgeRepository",
     "ChatJudgeScoreCalculator",
     "ChatJudgeService",
+    "ChatJudgeSupabaseRepository",
     "ChatIntencaoService",
     "ChatMemoryBuildResult",
     "ChatMemoryService",
@@ -117,5 +128,8 @@ __all__ = [
     "TBCAService",
     "TacoOnlineService",
     "FotoAlimentosService",
+    "build_completed_chat_judge_tracking_record",
+    "build_failed_chat_judge_tracking_record",
+    "build_pending_chat_judge_tracking_record",
     "build_chat_tool_executor",
 ]
