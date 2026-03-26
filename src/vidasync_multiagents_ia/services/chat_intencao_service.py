@@ -47,7 +47,21 @@ class ChatIntencaoService:
         _RegraIntencao(
             intencao="pedir_dicas",
             contexto_roteamento="chat_dicas",
-            termos=("dica", "dicas", "conselho", "orientacao", "sugestao"),
+            termos=(
+                "dica",
+                "dicas",
+                "conselho",
+                "orientacao",
+                "sugestao",
+                "fibra",
+                "fibras",
+                "fibra alimentar",
+                "como aumentar fibra",
+                "como melhorar a alimentacao",
+                "o que comer",
+                "como montar uma refeicao",
+                "saciedade",
+            ),
             requer_fluxo_estruturado=False,
         ),
         _RegraIntencao(
