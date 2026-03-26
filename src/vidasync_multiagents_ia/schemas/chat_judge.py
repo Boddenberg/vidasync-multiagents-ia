@@ -171,3 +171,21 @@ class ChatJudgeApprovalResult(BaseModel):
         if self.decision == "approved" and self.rejection_reasons:
             raise ValueError("Decisao aprovada nao pode conter motivos de reprovacao.")
         return self
+
+
+class ChatJudgeResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str
+    conversation_id: str | None = None
+    message_id: str | None = None
+    request_id: str | None = None
+    idioma: str = "pt-BR"
+    intencao: str | None = None
+    pipeline: str | None = None
+    handler: str | None = None
+    summary: str
+    criteria: ChatJudgeCriteriaAssessment
+    improvements: list[str] = Field(default_factory=list)
+    score: ChatJudgeScoreResult
+    approval: ChatJudgeApprovalResult

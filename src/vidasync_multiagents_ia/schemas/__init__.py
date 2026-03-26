@@ -14,6 +14,7 @@ from vidasync_multiagents_ia.schemas.chat_judge import (
     ChatJudgeEvaluationInput,
     ChatJudgeLLMResponse,
     ChatJudgeRejectionReason,
+    ChatJudgeResult,
     ChatJudgeScoreResult,
 )
 from vidasync_multiagents_ia.schemas.calorias_texto import (
@@ -148,6 +149,7 @@ __all__ = [
     "ChatJudgeEvaluationInput",
     "ChatJudgeLLMResponse",
     "ChatJudgeRejectionReason",
+    "ChatJudgeResult",
     "ChatJudgeScoreResult",
     "AgenteTranscricaoAudio",
     "CaloriasTextoResponse",
