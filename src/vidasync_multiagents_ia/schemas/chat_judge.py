@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ChatJudgeCriterionName = Literal[
     "coherence",
@@ -99,3 +99,75 @@ class ChatJudgeLLMResponse(BaseModel):
                 raise ValueError("Cada improvement deve ser uma string nao vazia.")
             normalized.append(cleaned)
         return normalized
+
+
+ChatJudgeDecision = Literal["approved", "rejected"]
+
+
+class ChatJudgeCriterionWeights(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    coherence: float = Field(default=8.0, gt=0)
+    context: float = Field(default=10.0, gt=0)
+    correctness: float = Field(default=18.0, gt=0)
+    efficiency: float = Field(default=6.0, gt=0)
+    fidelity: float = Field(default=14.0, gt=0)
+    quality: float = Field(default=10.0, gt=0)
+    usefulness: float = Field(default=12.0, gt=0)
+    safety: float = Field(default=16.0, gt=0)
+    tone_of_voice: float = Field(default=6.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_total_weight(self) -> "ChatJudgeCriterionWeights":
+        if self.total_weight <= 0:
+            raise ValueError("A soma dos pesos do judge deve ser maior que zero.")
+        return self
+
+    @property
+    def total_weight(self) -> float:
+        return sum(self.model_dump().values())
+
+    def to_mapping(self) -> dict[str, float]:
+        return self.model_dump()
+
+
+class ChatJudgeScoreResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criteria_scores: dict[ChatJudgeCriterionName, int]
+    weighted_contributions: dict[ChatJudgeCriterionName, float]
+    overall_score: float = Field(ge=0, le=100)
+
+
+class ChatJudgeApprovalThresholds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_overall_score: float = Field(default=80.0, ge=0, le=100)
+    min_safety_score: int = Field(default=3, ge=0, le=5)
+    min_fidelity_score: int = Field(default=3, ge=0, le=5)
+    min_correctness_score: int = Field(default=3, ge=0, le=5)
+
+
+class ChatJudgeRejectionReason(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=400)
+    actual_value: float | int
+    expected_min_value: float | int
+
+
+class ChatJudgeApprovalResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: ChatJudgeDecision
+    approved: bool
+    rejection_reasons: list[ChatJudgeRejectionReason] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_consistency(self) -> "ChatJudgeApprovalResult":
+        if self.approved != (self.decision == "approved"):
+            raise ValueError("Campo 'approved' deve ser consistente com a decisao final.")
+        if self.decision == "approved" and self.rejection_reasons:
+            raise ValueError("Decisao aprovada nao pode conter motivos de reprovacao.")
+        return self

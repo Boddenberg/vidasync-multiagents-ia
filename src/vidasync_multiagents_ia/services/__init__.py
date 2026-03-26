@@ -13,7 +13,9 @@ from vidasync_multiagents_ia.services.chat_conversacional_router_service import 
     ChatConversacionalRouteResult,
     ChatConversacionalRouterService,
 )
+from vidasync_multiagents_ia.services.chat_judge_approval import ChatJudgeApprovalService
 from vidasync_multiagents_ia.services.chat_judge_llm_client import ChatJudgeLLMClient
+from vidasync_multiagents_ia.services.chat_judge_scoring import ChatJudgeScoreCalculator
 from vidasync_multiagents_ia.services.chat_intencao_service import ChatIntencaoService
 from vidasync_multiagents_ia.services.chat_memory_service import (
     ChatMemoryBuildResult,
@@ -74,7 +76,9 @@ __all__ = [
     "ChatCaloriasMacrosFlowService",
     "ChatConversacionalRouteResult",
     "ChatConversacionalRouterService",
+    "ChatJudgeApprovalService",
     "ChatJudgeLLMClient",
+    "ChatJudgeScoreCalculator",
     "ChatIntencaoService",
     "ChatMemoryBuildResult",
     "ChatMemoryService",
