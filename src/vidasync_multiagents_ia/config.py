@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    chat_judge_model: str = "gpt-4o-mini"
     openai_audio_model: str = "gpt-4o-mini-transcribe"
     audio_max_upload_bytes: int = 8 * 1024 * 1024
     audio_recommended_max_seconds: int = 45
