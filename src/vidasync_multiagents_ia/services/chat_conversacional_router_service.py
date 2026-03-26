@@ -17,6 +17,7 @@ from vidasync_multiagents_ia.observability.payload_preview import preview_text
 from vidasync_multiagents_ia.schemas import (
     ChatPipelineNome,
     ChatRoteamento,
+    ChatUIAction,
     IntencaoChatCandidata,
     IntencaoChatDetectada,
     IntencaoChatNome,
@@ -37,6 +38,10 @@ from vidasync_multiagents_ia.services.chat_plano_alimentar_multimodal_flow_servi
 from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
     ChatRefeicaoMultimodalFlowOutput,
     ChatRefeicaoMultimodalFlowService,
+)
+from vidasync_multiagents_ia.services.chat_guardrails_service import (
+    ChatGuardrailDecision,
+    ChatGuardrailsService,
 )
 from vidasync_multiagents_ia.services.chat_receitas_flow_service import (
     ChatReceitasFlowOutput,
@@ -89,6 +94,7 @@ class _HandlerPayload:
     status: Literal["sucesso", "parcial", "erro"] = "sucesso"
     warnings: list[str] = field(default_factory=list)
     precisa_revisao: bool = False
+    acoes_ui: list[ChatUIAction] = field(default_factory=list)
     metadados: dict[str, Any] = field(default_factory=dict)
     handler_override: str | None = None
 
@@ -110,6 +116,7 @@ class ChatConversacionalRouterService:
         substituicoes_flow_service: ChatSubstituicoesFlowService | None = None,
         rag_retriever: Callable[[str], list[Document]] | None = None,
         tool_executor: ChatToolExecutor | None = None,
+        guardrails_service: ChatGuardrailsService | None = None,
     ) -> None:
         self._settings = settings
         self._client = client or OpenAIClient(
@@ -165,6 +172,7 @@ class ChatConversacionalRouterService:
             settings=settings,
             client=self._client,
         )
+        self._guardrails_service = guardrails_service or ChatGuardrailsService()
         self._logger = logging.getLogger(__name__)
         self._handlers = self._build_handlers()
 
@@ -175,6 +183,10 @@ class ChatConversacionalRouterService:
         prompt: str | None = None,
     ) -> tuple[ChatPipelineNome, str]:
         # /**** Exposicao controlada do registry para etapa de roteamento no orquestrador de chat. ****/
+        if prompt:
+            guardrail = self._guardrails_service.evaluate(prompt=prompt, intencao=intencao)
+            if guardrail is not None:
+                return "guardrail_chat", guardrail.handler
         handler = self._handlers.get(intencao, self._handlers["conversa_geral"])
         return handler.pipeline, handler.nome_handler
 
@@ -224,6 +236,27 @@ class ChatConversacionalRouterService:
                 "motivo_forcamento_anexo": motivo_forcamento_anexo,
             },
         )
+        guardrail_started = perf_counter()
+        guardrail = self._guardrails_service.evaluate(
+            prompt=prompt,
+            intencao=intencao_efetiva.intencao,
+        )
+        if guardrail is not None:
+            guardrail_duration_ms = (perf_counter() - guardrail_started) * 1000.0
+            record_chat_stage_duration(
+                engine=self._settings.chat_orchestrator_engine,
+                stage=f"router.{guardrail.handler}",
+                status=guardrail.status,
+                duration_ms=guardrail_duration_ms,
+            )
+            return self._build_guardrail_result(
+                guardrail=guardrail,
+                intencao_entrada=intencao,
+                intencao_efetiva=intencao_efetiva,
+                intencao_forcada_por_anexo=intencao_forcada_por_anexo,
+                motivo_forcamento_anexo=motivo_forcamento_anexo,
+                duration_ms=guardrail_duration_ms,
+            )
         handler_started = perf_counter()
         try:
             payload = handler.executor(prompt_para_handler, intencao_efetiva, anexo_para_handler)
@@ -430,7 +463,62 @@ class ChatConversacionalRouterService:
                 status=payload.status,
                 warnings=payload.warnings,
                 precisa_revisao=payload.precisa_revisao,
+                acoes_ui=payload.acoes_ui,
                 metadados=payload.metadados,
+            ),
+        )
+
+    def _build_guardrail_result(
+        self,
+        *,
+        guardrail: ChatGuardrailDecision,
+        intencao_entrada: IntencaoChatDetectada,
+        intencao_efetiva: IntencaoChatDetectada,
+        intencao_forcada_por_anexo: bool,
+        motivo_forcamento_anexo: str | None,
+        duration_ms: float,
+    ) -> ChatConversacionalRouteResult:
+        metadados = dict(guardrail.metadados)
+        metadados["handler_duration_ms"] = round(duration_ms, 4)
+        if intencao_forcada_por_anexo:
+            metadados["intencao_entrada"] = intencao_entrada.intencao
+            metadados["intencao_roteada"] = intencao_efetiva.intencao
+            metadados["intencao_forcada_por_anexo"] = True
+            metadados["motivo_forcamento_anexo"] = motivo_forcamento_anexo
+
+        warnings = guardrail.warnings[:8]
+        self._logger.info(
+            "chat_router.completed",
+            extra={
+                "pipeline": "guardrail_chat",
+                "handler": guardrail.handler,
+                "status": guardrail.status,
+                "warnings": len(guardrail.warnings),
+                "warnings_preview": warnings,
+                "precisa_revisao": guardrail.precisa_revisao,
+                "response_chars": len(guardrail.response),
+                "tool_acionada": None,
+                "rag_usado": False,
+                "rag_docs_count": 0,
+                "handler_duration_ms": metadados.get("handler_duration_ms"),
+                "response_preview": preview_text(
+                    guardrail.response,
+                    max_chars=self._settings.log_internal_max_body_chars,
+                )
+                if self._settings.log_internal_payloads
+                else None,
+            },
+        )
+        return ChatConversacionalRouteResult(
+            response=guardrail.response,
+            roteamento=ChatRoteamento(
+                pipeline="guardrail_chat",
+                handler=guardrail.handler,
+                status=guardrail.status,
+                warnings=guardrail.warnings,
+                precisa_revisao=guardrail.precisa_revisao,
+                acoes_ui=guardrail.acoes_ui,
+                metadados=metadados,
             ),
         )
 

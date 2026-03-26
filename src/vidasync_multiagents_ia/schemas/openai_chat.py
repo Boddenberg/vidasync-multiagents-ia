@@ -23,6 +23,7 @@ ChatPipelineNome = Literal[
     "cadastro_refeicoes",
     "cadastro_pratos",
     "resposta_conversacional_geral",
+    "guardrail_chat",
 ]
 
 
@@ -96,12 +97,22 @@ class OpenAIChatRequest(BaseModel):
     )
 
 
+class ChatUIAction(BaseModel):
+    tipo: Literal["open_app_feature"] = "open_app_feature"
+    action_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    variant: Literal["primary", "secondary"] = "primary"
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class ChatRoteamento(BaseModel):
     pipeline: ChatPipelineNome
     handler: str
     status: Literal["sucesso", "parcial", "erro"] = "sucesso"
     warnings: list[str] = Field(default_factory=list)
     precisa_revisao: bool = False
+    acoes_ui: list[ChatUIAction] = Field(default_factory=list)
     metadados: dict[str, Any] = Field(default_factory=dict)
 
 
