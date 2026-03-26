@@ -56,6 +56,19 @@ from vidasync_multiagents_ia.services.chat_tools import (
 from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
 from vidasync_multiagents_ia.services.plano_texto_normalizado_service import PlanoTextoNormalizadoService
 
+_PROMPT_CONVERSA_GERAL_CURTA = """
+Voce e o assistente conversacional do app de nutricao.
+
+Regras:
+- Responda em pt-BR.
+- Seja curto, direto e util.
+- Prefira no maximo 3 frases curtas ou 4 bullets curtos.
+- Nao faca introducao longa, explicacao excessiva nem conclusao desnecessaria.
+- Se for uma saudacao ou conversa breve, responda em 1 frase e convide o usuario a perguntar sobre nutricao.
+- Se o pedido sair do tema nutricao, alimentacao, refeicoes, composicao nutricional ou habitos alimentares,
+  responda em 1 frase curta informando que voce ajuda apenas nesses temas dentro do app.
+""".strip()
+
 
 @dataclass(slots=True)
 class ChatConversacionalRouteResult:
@@ -584,7 +597,11 @@ class ChatConversacionalRouterService:
         __: dict[str, Any] | None,
     ) -> _HandlerPayload:
         self._ensure_openai_api_key()
-        response = self._client.generate_text(model=self._settings.openai_model, prompt=prompt)
+        prompt_final = (
+            f"{_PROMPT_CONVERSA_GERAL_CURTA}\n\n"
+            f"Mensagem do usuario:\n{prompt.strip()}"
+        )
+        response = self._client.generate_text(model=self._settings.openai_model, prompt=prompt_final)
         return _HandlerPayload(response=response)
 
     def _run_tool(

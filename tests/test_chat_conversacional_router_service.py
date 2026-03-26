@@ -271,6 +271,34 @@ def test_router_aplica_prompt_contextualizado_em_intencao_contextual() -> None:
     assert "prefere lanche sem lactose" in fake_client.last_prompt
 
 
+def test_router_conversa_geral_forca_prompt_curto_e_direto() -> None:
+    fake_client = _FakeOpenAIClient()
+    settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
+    service = ChatConversacionalRouterService(
+        settings=settings,
+        client=fake_client,  # type: ignore[arg-type]
+        calorias_texto_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
+        rag_retriever=lambda _: [Document(page_content="contexto nutricional", metadata={"source": "test"})],
+    )
+    intencao = IntencaoChatDetectada(
+        intencao="conversa_geral",
+        confianca=0.55,
+        contexto_roteamento="chat",
+        requer_fluxo_estruturado=False,
+    )
+
+    result = service.route(
+        prompt="Oi, tudo bem por ai?",
+        intencao=intencao,
+    )
+
+    assert result.response == "resposta llm"
+    assert fake_client.last_prompt is not None
+    assert "assistente conversacional do app de nutricao" in fake_client.last_prompt
+    assert "Seja curto, direto e util" in fake_client.last_prompt
+    assert "Mensagem do usuario:\nOi, tudo bem por ai?" in fake_client.last_prompt
+
+
 def test_router_direciona_receitas_para_fluxo_dedicado() -> None:
     class _FakeReceitasFlowService:
         def executar(self, *, prompt: str, idioma: str = "pt-BR") -> ChatReceitasFlowOutput:

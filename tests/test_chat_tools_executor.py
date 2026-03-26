@@ -17,9 +17,13 @@ from vidasync_multiagents_ia.services.chat_tools import (
 
 
 class _FakeOpenAIClient:
+    def __init__(self) -> None:
+        self.last_prompt: str | None = None
+
     def generate_text(self, *, model: str, prompt: str) -> str:
         assert model == "gpt-4o-mini"
         assert prompt
+        self.last_prompt = prompt
         return "resposta llm ferramenta"
 
 
@@ -128,3 +132,28 @@ def test_tool_calcular_imc_retorna_parcial_quando_dado_insuficiente() -> None:
     assert result.status == "parcial"
     assert result.precisa_revisao is True
     assert "campos_faltantes" in result.metadados
+
+
+def test_tool_consultar_conhecimento_pede_resposta_curta() -> None:
+    settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
+    fake_client = _FakeOpenAIClient()
+    executor = build_chat_tool_executor(
+        settings=settings,
+        client=fake_client,  # type: ignore[arg-type]
+        calorias_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
+        rag_retriever=lambda _: [Document(page_content="base de fibras", metadata={"source": "test"})],
+    )
+
+    result = executor.execute(
+        data=ChatToolExecutionInput(
+            tool_name="consultar_conhecimento_nutricional",
+            prompt="Como melhorar a ingestao de fibra alimentar?",
+            idioma="pt-BR",
+            intencao=_intencao_padrao(),
+        )
+    )
+
+    assert result.tool_name == "consultar_conhecimento_nutricional"
+    assert fake_client.last_prompt is not None
+    assert "Responda no formato mais curto que resolva a duvida." in fake_client.last_prompt
+    assert "Prefira no maximo 3 frases curtas ou 4 bullets curtos." in fake_client.last_prompt

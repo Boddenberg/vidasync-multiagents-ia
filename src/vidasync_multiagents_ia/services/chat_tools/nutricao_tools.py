@@ -313,7 +313,11 @@ class ConsultarConhecimentoNutricionalTool:
         rag_used = bool(docs)
         record_chat_rag_usage(context=self.name, used=rag_used, documents_count=len(docs))
         prompt = (
-            "Voce responde perguntas nutricionais com linguagem clara e direta, destacando limites quando houver.\n\n"
+            "Voce responde perguntas nutricionais com linguagem clara, natural e objetiva.\n"
+            "Responda no formato mais curto que resolva a duvida.\n"
+            "Prefira no maximo 3 frases curtas ou 4 bullets curtos.\n"
+            "Nao faca introducao longa nem elaboracao excessiva.\n"
+            "Se o contexto for insuficiente, diga isso de forma curta.\n\n"
             f"Contexto nutricional:\n{contexto_rag}\n\n"
             f"Pergunta do usuario:\n{data.prompt}"
         )
