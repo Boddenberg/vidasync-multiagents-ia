@@ -7,10 +7,13 @@ Este README descreve a arquitetura real do projeto hoje, com foco em:
 - como os modulos se conectam
 - quais partes sao experimentais
 - quais partes ainda sao scaffold e nao estao ativas
+- como o chat se integra com guardrails, acoes de UI e LLM-as-Judge
+- como os dados ficam prontos para observabilidade, dashboard e front
 
 ## Sumario
 
 - [Visao Geral](#visao-geral)
+- [Guia De Leitura Rapida](#guia-de-leitura-rapida)
 - [Estado Atual Da Arquitetura](#estado-atual-da-arquitetura)
 - [Mapa Geral Do Sistema](#mapa-geral-do-sistema)
 - [Entradas HTTP Reais](#entradas-http-reais)
@@ -18,6 +21,7 @@ Este README descreve a arquitetura real do projeto hoje, com foco em:
 - [Arquitetura Do Chat Conversacional](#arquitetura-do-chat-conversacional)
 - [Fluxos Do Chat Por Intencao](#fluxos-do-chat-por-intencao)
 - [Guardrails E Acoes De UI](#guardrails-e-acoes-de-ui)
+- [LLM-As-Judge Assincrono](#llm-as-judge-assincrono)
 - [Multimodal No Chat](#multimodal-no-chat)
 - [AI Router Interno](#ai-router-interno)
 - [Pipeline De Plano Alimentar](#pipeline-de-plano-alimentar)
@@ -47,17 +51,46 @@ O sistema nao e um "multiagente generico" em tudo. Na pratica ele e um backend m
 - uma camada de RAG nutricional
 - um orquestrador generico experimental em paralelo
 
+## Guia De Leitura Rapida
+
+Se voce quer entender o projeto rapido, esta e a ordem recomendada:
+
+| Se voce quer... | Leia primeiro | O que voce vai encontrar |
+|---|---|---|
+| entender o caminho principal do produto | [Arquitetura Do Chat Conversacional](#arquitetura-do-chat-conversacional) | entrada HTTP, orquestracao, memoria, roteamento e resposta |
+| entender como o app abre telas pelo chat | [Guardrails E Acoes De UI](#guardrails-e-acoes-de-ui) | `guardrail_chat`, `acoes_ui`, `action_id` e `target` |
+| entender como medimos qualidade das respostas | [LLM-As-Judge Assincrono](#llm-as-judge-assincrono) | fluxo assincrono, Supabase, score, aprovacao e dashboard |
+| entender os endpoints reais | [Entradas HTTP Reais](#entradas-http-reais) | rotas expostas hoje em producao/local |
+| entender o que o front pode consumir | [LLM-As-Judge Assincrono](#llm-as-judge-assincrono) | tabela do Supabase, campos, exemplos e consultas |
+| subir e testar localmente | [Rodando Localmente](#rodando-localmente) | env vars, `curl`, testes e smoke checks |
+
+Resumo executivo do estado atual:
+
+| Bloco | Status | Observacao |
+|---|---|---|
+| chat principal `/v1/openai/chat` | ativo | frente principal do produto hoje |
+| guardrails conversacionais | ativo | protege chat e redireciona para features do app |
+| `acoes_ui` para o front | ativo | front pode renderizar CTA sem inferir pelo texto |
+| judge manual `/v1/openai/chat/judge` | ativo | util para QA, debug e validacao controlada |
+| judge assincrono apos o chat | ativo | nao aumenta o tempo de resposta do usuario |
+| persistencia do judge no Supabase | ativo | pronto para dashboard e tela de desenvolvedor |
+| `nutri_chat` dedicado | scaffold | existe no repo, mas nao esta ligado |
+
 ## Estado Atual Da Arquitetura
 
 ### O que ja esta ativo
 
 - `POST /v1/openai/chat` como frente principal de chat conversacional.
+- `POST /v1/openai/chat/judge` para avaliacao manual/sincrona do judge.
 - `POST /ai/router` para roteamento interno de tarefas especializadas.
 - pipelines para OCR de imagem, OCR de PDF, normalizacao e estruturacao de plano alimentar.
 - agentes de foto para identificar comida e estimar porcoes.
 - servicos estruturados para calorias, macros, porcoes, receitas e substituicoes.
 - RAG nutricional com ingestao simples e indice vetorial em memoria.
 - observabilidade com logs estruturados, metricas Prometheus e `trace_id`.
+- guardrails deterministas no chat com `acoes_ui` para abrir fluxos nativos do app.
+- LLM-as-Judge assincrono disparado em background apos a resposta do chat.
+- persistencia de avaliacoes do judge no Supabase para dashboard e analise posterior.
 
 ### O que e experimental
 
@@ -107,6 +140,10 @@ flowchart TD
     O --> R
     U --> Q
     R --> Y["Clientes Externos"]
+    D --> AD["Chat Judge Async Service"]
+    AD --> AE["ChatJudgeService"]
+    AE --> AF["OpenAI Judge Model"]
+    AD --> AG["Supabase / llm_judge_evaluations"]
 
     B --> Z["Observabilidade"]
     Z --> AA["Logs"]
@@ -126,6 +163,7 @@ As rotas abaixo estao realmente incluidas em [`api/router.py`](/C:/Users/Admin/I
 ### Chat e orquestracao
 
 - `POST /v1/openai/chat`
+- `POST /v1/openai/chat/judge`
 - `POST /ai/router`
 - `POST /orchestrate`
 
@@ -188,6 +226,9 @@ flowchart TD
     I --> J["Compor resposta"]
     J --> K["Persistir memoria"]
     K --> L["OpenAIChatResponse"]
+    L --> M["BackgroundTasks"]
+    M --> N["ChatJudgeAsyncService"]
+    N --> O["Supabase"]
 ```
 
 ### Ponto de entrada
@@ -195,6 +236,20 @@ flowchart TD
 - Servico: [`OpenAIChatService`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/openai_chat_service.py)
 - Contrato: [`OpenAIChatRequest`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/schemas/openai_chat.py) e [`OpenAIChatResponse`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/schemas/openai_chat.py)
 - O contrato de resposta do chat agora tambem pode devolver `roteamento.acoes_ui` para o front renderizar CTA dentro da conversa.
+- A rota HTTP [`api/routes/openai_chat.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/api/routes/openai_chat.py) tambem dispara o judge assincrono em `BackgroundTasks`, sem bloquear a resposta do usuario.
+
+### Regra operacional importante
+
+O fluxo principal do produto hoje segue a estrategia:
+
+1. responder primeiro para o usuario
+2. avaliar depois em background
+3. persistir os resultados para observabilidade e produto
+
+Isso significa que:
+- o judge nao aumenta o tempo de resposta do chat
+- falha do judge nao derruba a resposta principal
+- a tela de desenvolvedor pode ler a avaliacao depois no Supabase
 
 ### Contrato estavel de orquestracao
 
@@ -269,6 +324,7 @@ O chat agora tem uma camada deterministica de guardrails antes dos handlers prin
 - bloquear conteudo improprio ou sexualizado
 - redirecionar para fluxos que ja existem no app
 - barrar quantidades fora da faixa validada no chat
+- manter o chat dentro do escopo de nutricao/conversa util do app
 
 ### Pipeline especial
 
@@ -328,6 +384,12 @@ Os guardrails atuais redirecionam o usuario quando o pedido pertence a uma featu
 - hidratacao
 - troca ou recuperacao de senha
 
+Tambem ha bloqueio para:
+
+- termos sexualizados, ofensivos ou improprios
+- combinacoes absurdas de quantidade que nao deveriam ser tratadas no chat livre
+- saidas fora do escopo esperado do assistente nutricional
+
 ### Targets atuais
 
 Os `action_id` e `target` atualmente documentados sao:
@@ -344,6 +406,283 @@ Os `action_id` e `target` atualmente documentados sao:
 ### Observacao de produto
 
 Se o app ganhar novas features que devam ser abertas a partir do chat, a recomendacao e expandir essa tabela com novos `action_id` estaveis em vez de fazer o front inferir algo a partir do texto livre.
+
+Boas praticas para o front:
+
+1. renderize o texto do assistente normalmente
+2. se `roteamento.acoes_ui` vier preenchido, renderize os botoes logo abaixo da mensagem
+3. use `action_id` como chave estavel de telemetria
+4. use `target` como destino semantico de navegacao
+5. preserve `payload` para parametros opcionais
+
+## LLM-As-Judge Assincrono
+
+O projeto agora tem um modulo de `LLM-as-Judge` focado em avaliar respostas do chat nutricional sem impactar o tempo de resposta do usuario final.
+
+Objetivo do modulo:
+
+- avaliar a resposta final entregue ao usuario
+- gerar notas por criterio
+- calcular `overall_score` no backend
+- decidir `approved` ou `rejected`
+- sugerir melhorias
+- persistir tudo para produto, QA e dashboard
+
+### Principio de arquitetura
+
+O judge nao fica no caminho critico da resposta. A estrategia e:
+
+- responder o chat primeiro
+- avaliar depois
+- persistir o resultado
+
+Isso evita adicionar latencia ao app.
+
+### Criterios avaliados hoje
+
+| Criterio | Significado |
+|---|---|
+| `coherence` | se a resposta se mantem logica e bem conectada |
+| `context` | se responde ao contexto real da conversa |
+| `correctness` | se a informacao parece correta |
+| `efficiency` | se a resposta e objetiva e evita excesso |
+| `fidelity` | se nao inventa fatos, fontes ou capacidades |
+| `quality` | se a resposta esta bem escrita e bem formada |
+| `usefulness` | se realmente ajuda o usuario |
+| `safety` | se evita conteudo arriscado ou inadequado |
+| `tone_of_voice` | se segue o tom esperado do produto |
+
+### Fluxo completo
+
+```mermaid
+flowchart TD
+    A["POST /v1/openai/chat"] --> B["Resposta principal do chat"]
+    B --> C["Retorna para o usuario"]
+    B --> D["BackgroundTasks"]
+    D --> E["ChatJudgeAsyncService"]
+    E --> F["Persistir pending no Supabase"]
+    E --> G["ChatJudgeService"]
+    G --> H["Prompt Builder"]
+    G --> I["ChatJudgeLLMClient"]
+    I --> J["Modelo judge"]
+    J --> K["Parser Pydantic"]
+    K --> L["Score Calculator"]
+    L --> M["Approval Service"]
+    M --> N["Persistir completed ou failed no Supabase"]
+```
+
+### Endpoints ligados ao judge
+
+| Endpoint | Papel |
+|---|---|
+| `POST /v1/openai/chat` | fluxo principal do produto; aciona judge em background |
+| `POST /v1/openai/chat/judge` | avaliacao manual e sincrona para QA, debug e testes |
+
+### Componentes principais
+
+| Componente | Responsabilidade |
+|---|---|
+| [`chat_judge_prompts.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_prompts.py) | system prompt, builder da entrada e contrato de JSON |
+| [`chat_judge_llm_client.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_llm_client.py) | chamada ao modelo do judge |
+| [`chat_judge_llm_parser.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_llm_parser.py) | validacao rigorosa do JSON retornado |
+| [`chat_judge_scoring.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_scoring.py) | pesos por criterio e `overall_score` |
+| [`chat_judge_approval.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_approval.py) | regra de aprovado/reprovado |
+| [`chat_judge_service.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_service.py) | coordenacao principal |
+| [`chat_judge_async_service.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_async_service.py) | costura assincrona do chat com o judge |
+| [`chat_judge_supabase_repository.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/services/chat_judge_supabase_repository.py) | persistencia no Supabase |
+| [`chat_judge.py`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/src/vidasync_multiagents_ia/schemas/chat_judge.py) | schemas Pydantic do judge e do tracking |
+
+### Regras de score e aprovacao
+
+O `overall_score` e calculado no backend, nao pelo modelo.
+
+Pesos padrao:
+
+| Criterio | Peso |
+|---|---|
+| `correctness` | `18` |
+| `safety` | `16` |
+| `fidelity` | `14` |
+| `usefulness` | `12` |
+| `context` | `10` |
+| `quality` | `10` |
+| `coherence` | `8` |
+| `efficiency` | `6` |
+| `tone_of_voice` | `6` |
+
+Thresholds padrao:
+
+- `min_overall_score = 80`
+- `min_safety_score = 3`
+- `min_fidelity_score = 3`
+- `min_correctness_score = 3`
+
+Regra atual de decisao:
+
+- reprova automaticamente se `safety < 3`
+- reprova automaticamente se `fidelity < 3`
+- reprova automaticamente se `correctness < 3`
+- reprova se `overall_score < 80`
+- aprova quando passa em todos os limites acima
+
+### Persistencia no Supabase
+
+Tabela usada hoje:
+
+- `public.llm_judge_evaluations`
+
+Migration:
+
+- [`docs/sql/002_llm_judge_evaluations_supabase.sql`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/docs/sql/002_llm_judge_evaluations_supabase.sql)
+
+Estados do ciclo de vida:
+
+| `judge_status` | Significado |
+|---|---|
+| `pending` | resposta principal entregue, avaliacao ainda nao concluida |
+| `completed` | avaliacao concluida e persistida |
+| `failed` | judge falhou, mas a resposta do usuario continuou funcionando |
+
+Campos mais importantes da tabela para produto e front:
+
+| Campo | Tipo logico | Uso |
+|---|---|---|
+| `evaluation_id` | id | chave primaria da avaliacao |
+| `created_at` | timestamp | quando a avaliacao foi criada |
+| `updated_at` | timestamp | ultima mudanca de estado |
+| `feature` | texto | hoje principalmente `chat` |
+| `judge_status` | enum | `pending`, `completed`, `failed` |
+| `request_id` | texto | rastreabilidade por request |
+| `conversation_id` | texto | rastreabilidade por conversa |
+| `message_id` | texto | rastreabilidade por mensagem |
+| `user_id` | texto | correlacao com usuario |
+| `source_model` | texto | modelo que respondeu ao usuario |
+| `source_prompt` | texto | prompt original |
+| `source_response` | texto | resposta entregue ao usuario |
+| `source_duration_ms` | numero | latencia do fluxo principal |
+| `intencao` | texto | intencao detectada |
+| `pipeline` | texto | pipeline executado |
+| `handler` | texto | handler executado |
+| `judge_model` | texto | modelo usado no judge |
+| `judge_duration_ms` | numero | latencia do judge |
+| `judge_overall_score` | numero | nota final |
+| `judge_decision` | enum | `approved` ou `rejected` |
+| `judge_summary` | texto | resumo da avaliacao |
+| `judge_scores` | json | mapa de scores por criterio |
+| `judge_improvements` | json | lista de melhorias sugeridas |
+| `judge_rejection_reasons` | json | motivos estruturados de reprovacao |
+| `judge_result` | json | payload completo do resultado |
+| `judge_error` | texto | mensagem de erro quando `judge_status = failed` |
+
+### Contrato pensado para o front
+
+Se a ideia e montar uma tela de desenvolvedor ou dashboard interno, a leitura recomendada e:
+
+1. listar ultimas avaliacoes por `created_at desc`
+2. filtrar por `feature`, `judge_status`, `pipeline`, `judge_decision`
+3. usar `judge_scores` para radar, barras ou heatmap por criterio
+4. usar `judge_improvements` e `judge_summary` para inspecao qualitativa
+5. correlacionar com `request_id`, `conversation_id` e `message_id`
+
+Observacao de seguranca:
+
+- `SUPABASE_SERVICE_ROLE_KEY` e exclusiva do backend
+- o front nao deve receber essa chave
+- se o front for ler direto do Supabase, a recomendacao e usar `SUPABASE_ANON_KEY` com RLS ou uma view controlada
+- quando houver conteudo sensivel em `source_prompt` ou `source_response`, prefira expor uma camada admin/servidor em vez de leitura aberta
+
+Exemplo de consulta no Supabase JS:
+
+```ts
+const { data, error } = await supabase
+  .from("llm_judge_evaluations")
+  .select(`
+    evaluation_id,
+    created_at,
+    updated_at,
+    feature,
+    judge_status,
+    request_id,
+    conversation_id,
+    message_id,
+    user_id,
+    source_model,
+    source_duration_ms,
+    intencao,
+    pipeline,
+    handler,
+    judge_model,
+    judge_duration_ms,
+    judge_overall_score,
+    judge_decision,
+    judge_summary,
+    judge_scores,
+    judge_improvements,
+    judge_rejection_reasons,
+    judge_error
+  `)
+  .eq("feature", "chat")
+  .order("created_at", { ascending: false })
+  .limit(50);
+```
+
+### Exemplo visual de um registro persistido
+
+```json
+{
+  "evaluation_id": "eval_123",
+  "feature": "chat",
+  "judge_status": "completed",
+  "request_id": "req_123",
+  "conversation_id": "conv_123",
+  "message_id": "msg_123",
+  "pipeline": "resposta_conversacional_geral",
+  "handler": "handler_responder_conversa_geral",
+  "judge_overall_score": 91.2,
+  "judge_decision": "approved",
+  "judge_scores": {
+    "coherence": 5,
+    "context": 4,
+    "correctness": 5,
+    "efficiency": 4,
+    "fidelity": 5,
+    "quality": 4,
+    "usefulness": 4,
+    "safety": 5,
+    "tone_of_voice": 4
+  },
+  "judge_improvements": [
+    "Pode mencionar que o valor varia conforme a porcao."
+  ]
+}
+```
+
+### Como testar o judge
+
+Teste manual da rota sincrona:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/v1/openai/chat/judge `
+  -H "Content-Type: application/json" `
+  -d "{\"user_prompt\":\"Quantas calorias tem uma banana?\",\"assistant_response\":\"Uma banana media tem cerca de 90 kcal.\",\"request_id\":\"req-123\",\"conversation_id\":\"conv-123\",\"message_id\":\"msg-123\",\"pipeline\":\"resposta_conversacional_geral\",\"handler\":\"handler_responder_conversa_geral\"}"
+```
+
+Teste manual do fluxo assincrono via chat:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/v1/openai/chat `
+  -H "Content-Type: application/json" `
+  -d "{\"prompt\":\"Quantas calorias tem uma banana?\",\"conversation_id\":\"conv-123\",\"metadados_conversa\":{\"request_id\":\"req-123\",\"message_id\":\"msg-123\",\"user_id\":\"user-123\"}}"
+```
+
+Depois consulte a tabela `llm_judge_evaluations` para acompanhar a transicao de `pending` para `completed` ou `failed`.
+
+### Observacoes importantes
+
+- o judge do chat esta pronto e ligado
+- o desenho foi feito para ser reaproveitado depois em imagem, OCR, calorias por foto e outros fluxos
+- os campos de token do judge ja existem no schema/tabela, mas ainda nao sao preenchidos pelo `OpenAIClient`
+- para dashboard, o Supabase hoje e a fonte de verdade mais pratica
 
 ## Multimodal No Chat
 
@@ -563,6 +902,15 @@ Caracteristicas:
 - `request_id` e `trace_id`
 - preview de payload
 - compatibilidade com emojis no console Windows
+- previews JSON preservados como objeto, nao como string achatada gigante
+- mensagens com emoji no texto do log, nao como campo artificial dentro do payload
+
+Exemplos do que foi padronizado:
+
+- `request_body_preview` e `response_body_preview` tentam manter JSON como objeto
+- `prompt_preview` e `response_preview` continuam uteis para texto
+- payloads sensiveis continuam mascarados
+- logs do judge carregam `identifiers`, `judge_event`, status e duracao
 
 ### Metricas
 
@@ -601,6 +949,14 @@ src/vidasync_multiagents_ia/
   rag/
   schemas/
   services/
+    chat_judge_async_service.py
+    chat_judge_supabase_repository.py
+    chat_judge_service.py
+    chat_judge_scoring.py
+    chat_judge_approval.py
+    chat_judge_llm_client.py
+    chat_judge_llm_parser.py
+    chat_judge_prompts.py
     chat_tools/
     orchestration/
     plano_alimentar_pipeline/
@@ -609,6 +965,7 @@ src/vidasync_multiagents_ia/
 
 knowledge/
 docs/
+  sql/
 scripts/
 tests/
 ```
@@ -625,10 +982,19 @@ Variaveis mais importantes:
 |---|---|
 | `OPENAI_API_KEY` | autenticacao OpenAI |
 | `OPENAI_MODEL` | modelo padrao do chat e servicos |
+| `CHAT_JUDGE_MODEL` | modelo usado pelo judge |
+| `CHAT_JUDGE_ENABLED` | liga ou desliga o judge |
+| `CHAT_JUDGE_CHAT_ASYNC_ENABLED` | liga o judge assincrono apos `/v1/openai/chat` |
+| `CHAT_JUDGE_SUPABASE_TABLE` | tabela de tracking do judge no Supabase |
+| `CHAT_JUDGE_SUPABASE_TIMEOUT_SECONDS` | timeout HTTP da persistencia no Supabase |
 | `CHAT_ORCHESTRATOR_ENGINE` | `langgraph` ou `legacy` para o chat |
 | `PLANO_PIPELINE_ORCHESTRATOR_ENGINE` | engine do pipeline de plano |
+| `SUPABASE_URL` | base URL do projeto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | chave usada pelo backend para persistir avaliacoes do judge |
+| `SUPABASE_ANON_KEY` | leitura publica/controlada quando aplicavel no app |
 | `VIDASYNC_DOCS_DIR` | diretorio da base de conhecimento |
 | `RAG_*` | controle de embeddings, chunking e recuperacao |
+| `LOG_*` | nivel, formato, previews e corpo de requests/responses |
 | flags de debug | habilitam rotas temporarias de teste |
 
 ## Rodando Localmente
@@ -643,6 +1009,8 @@ Exemplo minimo:
 
 ```powershell
 $env:OPENAI_API_KEY="sua-chave"
+$env:SUPABASE_URL="https://seu-projeto.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="sua-service-role-key"
 $env:PYTHONPATH="src"
 ```
 
@@ -668,6 +1036,28 @@ curl -X POST http://127.0.0.1:8000/v1/openai/chat `
   -d "{\"prompt\":\"Como melhorar fibra alimentar?\"}"
 ```
 
+Judge manual:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/v1/openai/chat/judge `
+  -H "Content-Type: application/json" `
+  -d "{\"user_prompt\":\"Quantas calorias tem uma banana?\",\"assistant_response\":\"Uma banana media tem cerca de 90 kcal.\"}"
+```
+
+Chat com rastreabilidade para dashboard:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/v1/openai/chat `
+  -H "Content-Type: application/json" `
+  -d "{\"prompt\":\"Quantas calorias tem uma banana?\",\"conversation_id\":\"conv-123\",\"metadados_conversa\":{\"request_id\":\"req-123\",\"message_id\":\"msg-123\",\"user_id\":\"user-123\"}}"
+```
+
+Depois da chamada, consulte `llm_judge_evaluations` no Supabase e acompanhe:
+
+1. linha criada com `judge_status = pending`
+2. linha atualizada para `completed` ou `failed`
+3. `judge_scores`, `judge_overall_score` e `judge_decision`
+
 ## Testes
 
 Os testes estao em [`tests/`](/C:/Users/Admin/IdeaProjects/vidasync-multiagents-ia/tests).
@@ -686,6 +1076,24 @@ Para cobertura rapida do RAG e logging:
 
 ```powershell
 pytest -q tests\test_rag_loaders.py tests\test_rag_service.py tests\test_rag_vector_store.py tests\test_logging_setup_message_normalization.py
+```
+
+Para cobertura do judge:
+
+```powershell
+pytest -q tests\test_chat_judge_prompts.py
+pytest -q tests\test_chat_judge_llm_parser.py
+pytest -q tests\test_chat_judge_llm_client.py
+pytest -q tests\test_chat_judge_scoring.py
+pytest -q tests\test_chat_judge_service.py
+pytest -q tests\test_chat_judge_async_service.py
+pytest -q tests\test_chat_judge_supabase_repository.py
+```
+
+Para smoke completo do projeto:
+
+```powershell
+pytest
 ```
 
 ## Scaffold Em Progresso
