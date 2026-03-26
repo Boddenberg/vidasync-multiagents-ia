@@ -14,6 +14,7 @@ from vidasync_multiagents_ia.observability.context import (
     set_trace_id,
 )
 from vidasync_multiagents_ia.observability.metrics import record_http_request, record_http_timeout
+from vidasync_multiagents_ia.observability.payload_preview import preview_json
 
 _LOGGER = logging.getLogger("vidasync.http")
 _TEXT_CONTENT_HINTS = (
@@ -54,7 +55,7 @@ async def log_request_response(
     start = perf_counter()
 
     request_for_next = request
-    request_body_preview: str | None = None
+    request_body_preview: Any | None = None
     request_capture_mode = "skipped"
     contexto: str | None = None
     try:
@@ -246,7 +247,7 @@ async def _prepare_request_preview(
     request: Request,
     max_body_bytes: int,
     max_body_chars: int,
-) -> tuple[Request, str | None, str, str | None]:
+) -> tuple[Request, Any | None, str, str | None]:
     method = request.method.upper()
     if method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return request, None, "sem_body", None
@@ -269,8 +270,11 @@ async def _prepare_request_preview(
     if len(body) > max_body_bytes:
         return request, f"<body_omitido_tamanho={len(body)}>", "omitido_tamanho", None
 
-    preview = _sanitize_text(_safe_decode(body))
-    preview = _truncate(preview, max_chars=max_body_chars)
+    preview = _build_body_preview(
+        body=body,
+        content_type=content_type,
+        max_body_chars=max_body_chars,
+    )
     contexto = _extract_contexto_from_json_body(body=body, content_type=content_type)
 
     async def receive() -> dict[str, Any]:
@@ -285,7 +289,7 @@ def _extract_response_preview(
     response: Response,
     max_body_chars: int,
     response_body: bytes | None = None,
-) -> str | None:
+) -> Any | None:
     content_type = (response.headers.get("content-type") or "").lower()
     if not content_type or not _contains_any(content_type, _TEXT_CONTENT_HINTS):
         return None
@@ -295,10 +299,14 @@ def _extract_response_preview(
         return None
 
     if isinstance(body, bytes):
-        text = _safe_decode(body)
+        body_bytes = body
     else:
-        text = str(body)
-    return _truncate(_sanitize_text(text), max_chars=max_body_chars)
+        body_bytes = str(body).encode("utf-8", errors="replace")
+    return _build_body_preview(
+        body=body_bytes,
+        content_type=content_type,
+        max_body_chars=max_body_chars,
+    )
 
 
 def _extract_headers(request: Request, *, enabled: bool) -> dict[str, Any] | None:
@@ -355,6 +363,18 @@ def _sanitize_text(value: str) -> str:
         sanitized = _mask_key_value(sanitized, key)
 
     return sanitized
+
+
+def _build_body_preview(*, body: bytes, content_type: str, max_body_chars: int) -> Any | None:
+    decoded = _safe_decode(body)
+    if "application/json" in content_type:
+        try:
+            parsed = json.loads(decoded)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+        else:
+            return preview_json(parsed, max_chars=max_body_chars)
+    return _truncate(_sanitize_text(decoded), max_chars=max_body_chars)
 
 
 def _extract_contexto_from_json_body(*, body: bytes, content_type: str) -> str | None:

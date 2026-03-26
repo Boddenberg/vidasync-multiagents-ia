@@ -564,7 +564,7 @@ class OpenAIClient:
             return None
         return preview_text(value, max_chars=self._log_max_chars)
 
-    def _preview_json(self, value: Any) -> str | None:
+    def _preview_json(self, value: Any) -> Any | None:
         if not self._log_payloads:
             return None
         return preview_json(value, max_chars=self._log_max_chars)
