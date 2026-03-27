@@ -82,6 +82,19 @@ class ChatJudgeCriteriaAssessment(BaseModel):
             "tone_of_voice": self.tone_of_voice.score,
         }
 
+    def to_reason_mapping(self) -> dict[str, str]:
+        return {
+            "coherence": self.coherence.reason,
+            "context": self.context.reason,
+            "correctness": self.correctness.reason,
+            "efficiency": self.efficiency.reason,
+            "fidelity": self.fidelity.reason,
+            "quality": self.quality.reason,
+            "usefulness": self.usefulness.reason,
+            "safety": self.safety.reason,
+            "tone_of_voice": self.tone_of_voice.reason,
+        }
+
 
 class ChatJudgeLLMResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -104,6 +117,13 @@ class ChatJudgeLLMResponse(BaseModel):
 
 ChatJudgeDecision = Literal["approved", "rejected"]
 ChatJudgeStatus = Literal["pending", "completed", "failed"]
+
+
+class ChatJudgeExecutionRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(min_length=1)
+    status: ChatJudgeStatus
 
 
 class ChatJudgeCriterionWeights(BaseModel):
@@ -284,3 +304,28 @@ class ChatJudgeTrackingRecord(BaseModel):
             return None
         text = str(value).strip()
         return text or None
+
+
+class ChatJudgeTelemetryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(min_length=1)
+    request_id: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+    judge_status: ChatJudgeStatus
+    source_model: str
+    judge_model: str | None = None
+    source_duration_ms: float | None = Field(default=None, ge=0)
+    judge_duration_ms: float | None = Field(default=None, ge=0)
+    overall_score: float | None = Field(default=None, ge=0, le=100)
+    decision: ChatJudgeDecision | None = None
+    approved: bool | None = None
+    summary: str | None = None
+    improvements: list[str] = Field(default_factory=list)
+    criterion_scores: dict[ChatJudgeCriterionName, int] = Field(default_factory=dict)
+    criterion_reasons: dict[ChatJudgeCriterionName, str] = Field(default_factory=dict)
+    criteria: ChatJudgeCriteriaAssessment | None = None
+    score: ChatJudgeScoreResult | None = None
+    approval: ChatJudgeApprovalResult | None = None
+    error: str | None = None

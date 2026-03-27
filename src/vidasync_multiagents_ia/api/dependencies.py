@@ -8,6 +8,7 @@ from vidasync_multiagents_ia.services import (
     AudioTranscricaoService,
     ChatJudgeAsyncService,
     ChatJudgeService,
+    ChatJudgeTrackingService,
     FotoCaloriasPipelineTesteService,
     FotoAlimentosService,
     FrasePorcoesService,
@@ -38,6 +39,11 @@ def get_chat_judge_service() -> ChatJudgeService:
 @lru_cache(maxsize=1)
 def get_chat_judge_async_service() -> ChatJudgeAsyncService:
     return ChatJudgeAsyncService(settings=get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_chat_judge_tracking_service() -> ChatJudgeTrackingService:
+    return ChatJudgeTrackingService(settings=get_settings())
 
 
 @lru_cache(maxsize=1)

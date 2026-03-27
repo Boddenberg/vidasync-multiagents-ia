@@ -29,7 +29,9 @@ from vidasync_multiagents_ia.services.chat_judge_tracking_mapper import (
     build_completed_chat_judge_tracking_record,
     build_failed_chat_judge_tracking_record,
     build_pending_chat_judge_tracking_record,
+    map_chat_judge_tracking_record_to_telemetry_response,
 )
+from vidasync_multiagents_ia.services.chat_judge_tracking_service import ChatJudgeTrackingService
 from vidasync_multiagents_ia.services.chat_intencao_service import ChatIntencaoService
 from vidasync_multiagents_ia.services.chat_memory_service import (
     ChatMemoryBuildResult,
@@ -98,6 +100,7 @@ __all__ = [
     "ChatJudgeScoreCalculator",
     "ChatJudgeService",
     "ChatJudgeSupabaseRepository",
+    "ChatJudgeTrackingService",
     "ChatIntencaoService",
     "ChatMemoryBuildResult",
     "ChatMemoryService",
@@ -131,5 +134,6 @@ __all__ = [
     "build_completed_chat_judge_tracking_record",
     "build_failed_chat_judge_tracking_record",
     "build_pending_chat_judge_tracking_record",
+    "map_chat_judge_tracking_record_to_telemetry_response",
     "build_chat_tool_executor",
 ]

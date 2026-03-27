@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from vidasync_multiagents_ia.schemas.chat_judge import ChatJudgeExecutionRef
+
 IntencaoChatNome = Literal[
     "enviar_plano_nutri",
     "pedir_receitas",
@@ -137,3 +139,4 @@ class OpenAIChatResponse(BaseModel):
     roteamento: ChatRoteamento | None = None
     conversation_id: str | None = None
     memoria: ChatMemoriaEstado | None = None
+    judge: ChatJudgeExecutionRef | None = None

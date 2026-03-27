@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from vidasync_multiagents_ia.schemas import ChatJudgeResult, ChatJudgeTrackingRecord
+from pydantic import ValidationError
+
+from vidasync_multiagents_ia.schemas import (
+    ChatJudgeResult,
+    ChatJudgeTelemetryResponse,
+    ChatJudgeTrackingRecord,
+)
 
 
 def build_pending_chat_judge_tracking_record(
@@ -94,3 +100,43 @@ def build_failed_chat_judge_tracking_record(
             "judge_result": None,
         }
     )
+
+
+def map_chat_judge_tracking_record_to_telemetry_response(
+    record: ChatJudgeTrackingRecord,
+) -> ChatJudgeTelemetryResponse:
+    parsed_result = _parse_optional_judge_result(record.judge_result)
+    criteria = parsed_result.criteria if parsed_result else None
+    approval = parsed_result.approval if parsed_result else None
+
+    return ChatJudgeTelemetryResponse(
+        evaluation_id=record.evaluation_id,
+        request_id=record.request_id,
+        conversation_id=record.conversation_id,
+        message_id=record.message_id,
+        judge_status=record.judge_status,
+        source_model=record.source_model,
+        judge_model=record.judge_model,
+        source_duration_ms=record.source_duration_ms,
+        judge_duration_ms=record.judge_duration_ms,
+        overall_score=record.judge_overall_score,
+        decision=record.judge_decision,
+        approved=approval.approved if approval else None,
+        summary=record.judge_summary,
+        improvements=list(record.judge_improvements),
+        criterion_scores=dict(record.judge_scores),
+        criterion_reasons=criteria.to_reason_mapping() if criteria else {},
+        criteria=criteria,
+        score=parsed_result.score if parsed_result else None,
+        approval=approval,
+        error=record.judge_error,
+    )
+
+
+def _parse_optional_judge_result(payload: object) -> ChatJudgeResult | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return ChatJudgeResult.model_validate(payload)
+    except ValidationError:
+        return None
