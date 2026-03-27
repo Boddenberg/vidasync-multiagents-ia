@@ -24,10 +24,24 @@ from vidasync_multiagents_ia.observability.payload_preview import (
     sanitize_text,
     sanitize_url,
 )
+from vidasync_multiagents_ia.observability.telemetry import (
+    finalize_request_telemetry,
+    record_llm_call,
+    record_stage_event,
+    record_tool_call,
+    set_agent_run_metadata,
+    start_request_telemetry,
+)
 
 __all__ = [
     "setup_logging",
     "log_request_response",
+    "start_request_telemetry",
+    "finalize_request_telemetry",
+    "set_agent_run_metadata",
+    "record_llm_call",
+    "record_tool_call",
+    "record_stage_event",
     "record_http_request",
     "record_http_timeout",
     "record_chat_flow_execution",

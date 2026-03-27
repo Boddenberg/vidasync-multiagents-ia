@@ -9,12 +9,18 @@ from fastapi import Request, Response
 
 from vidasync_multiagents_ia.observability.context import (
     reset_request_id,
+    reset_telemetry_collector,
     reset_trace_id,
     set_request_id,
     set_trace_id,
 )
 from vidasync_multiagents_ia.observability.metrics import record_http_request, record_http_timeout
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
+from vidasync_multiagents_ia.observability.telemetry import (
+    finalize_request_telemetry,
+    set_agent_run_metadata,
+    start_request_telemetry,
+)
 
 _LOGGER = logging.getLogger("vidasync.http")
 _TEXT_CONTENT_HINTS = (
@@ -53,6 +59,14 @@ async def log_request_response(
     token = set_request_id(request_id)
     trace_token = set_trace_id(trace_id)
     start = perf_counter()
+    telemetry_token = start_request_telemetry(
+        settings=getattr(request.app.state, "settings", None) or None,
+        method=request.method,
+        path=request.url.path,
+        query=dict(request.query_params),
+        client_ip=request.client.host if request.client else None,
+        contexto=None,
+    )
 
     request_for_next = request
     request_body_preview: Any | None = None
@@ -64,6 +78,8 @@ async def log_request_response(
             max_body_bytes=max_body_bytes,
             max_body_chars=max_body_chars,
         )
+        if contexto:
+            set_agent_run_metadata(contexto=contexto)
 
         _LOGGER.info(
             "Requisicao HTTP recebida pela API.",
@@ -112,8 +128,17 @@ async def log_request_response(
             )
             if timeout:
                 record_http_timeout(method=request.method, path=request.url.path)
+        await finalize_request_telemetry(
+            status_code=500,
+            duration_ms=duration_ms,
+            timeout=timeout,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
         reset_request_id(token)
         reset_trace_id(trace_token)
+        if telemetry_token is not None:
+            reset_telemetry_collector(telemetry_token)
         raise
 
     response_body = await _capture_response_body(response)
@@ -159,8 +184,15 @@ async def log_request_response(
         if timeout:
             record_http_timeout(method=request.method, path=request.url.path)
 
+    await finalize_request_telemetry(
+        status_code=response.status_code,
+        duration_ms=duration_ms,
+        timeout=timeout,
+    )
     reset_request_id(token)
     reset_trace_id(trace_token)
+    if telemetry_token is not None:
+        reset_telemetry_collector(telemetry_token)
     return response
 
 

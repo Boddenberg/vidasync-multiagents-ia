@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     supabase_storage_public_bucket: str = "pipeline-inputs"
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
+    telemetry_enabled: bool = True
+    telemetry_supabase_timeout_seconds: float = 20.0
+    telemetry_supabase_agent_runs_table: str = "telemetry_agent_runs"
+    telemetry_supabase_llm_calls_table: str = "telemetry_llm_calls"
+    telemetry_supabase_tool_calls_table: str = "telemetry_tool_calls"
+    telemetry_supabase_stage_events_table: str = "telemetry_stage_events"
+    telemetry_store_previews: bool = True
+    telemetry_openai_pricing_by_model: dict[str, dict[str, float]] = Field(default_factory=dict)
     chroma_persist_dir: str = ".chroma"
     vidasync_docs_dir: str = "knowledge"
     rag_chunk_size: int = 800

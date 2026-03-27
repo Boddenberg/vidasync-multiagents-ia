@@ -15,6 +15,7 @@ setup_logging(level=settings.log_level, fmt=settings.log_format, json_pretty=set
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VidaSync Multiagents IA", version="0.1.0")
+app.state.settings = settings
 app.include_router(api_router)
 
 

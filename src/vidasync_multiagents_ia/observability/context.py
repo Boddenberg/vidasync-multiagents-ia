@@ -4,6 +4,7 @@ from typing import Any, Callable, TypeVar
 
 _request_id_var: ContextVar[str] = ContextVar("vidasync_request_id", default="-")
 _trace_id_var: ContextVar[str] = ContextVar("vidasync_trace_id", default="-")
+_telemetry_collector_var: ContextVar[Any | None] = ContextVar("vidasync_telemetry_collector", default=None)
 _T = TypeVar("_T")
 
 
@@ -32,6 +33,18 @@ def get_trace_id() -> str:
     if trace_id and trace_id != "-":
         return trace_id
     return _request_id_var.get()
+
+
+def set_telemetry_collector(value: Any | None) -> Token[Any | None]:
+    return _telemetry_collector_var.set(value)
+
+
+def reset_telemetry_collector(token: Token[Any | None]) -> None:
+    _telemetry_collector_var.reset(token)
+
+
+def get_telemetry_collector() -> Any | None:
+    return _telemetry_collector_var.get()
 
 
 def submit_with_context(

@@ -2,6 +2,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from threading import Lock
 
+from vidasync_multiagents_ia.observability.telemetry import record_stage_event
+
 
 @dataclass(slots=True)
 class _HistogramBucket:
@@ -349,6 +351,13 @@ def record_http_timeout(*, method: str, path: str) -> None:
 
 def record_external_request(*, client: str, operation: str, status: str, duration_ms: float) -> None:
     _metrics_store.record_external(client=client, operation=operation, status=status, duration_ms=duration_ms)
+    record_stage_event(
+        event_type="external_request",
+        name=operation,
+        status=status,
+        duration_ms=duration_ms,
+        metadata_json={"client": client},
+    )
 
 
 def record_external_timeout(*, client: str, operation: str) -> None:
@@ -374,14 +383,41 @@ def record_chat_flow_execution(
         status=status,
         duration_ms=duration_ms,
     )
+    record_stage_event(
+        event_type="chat_flow",
+        name=flow,
+        status=status,
+        duration_ms=duration_ms,
+        flow=flow,
+        engine=engine,
+        metadata_json={
+            "intencao": intencao,
+            "pipeline": pipeline,
+            "handler": handler,
+        },
+    )
 
 
 def record_chat_stage_duration(*, engine: str, stage: str, status: str, duration_ms: float) -> None:
     _metrics_store.record_chat_stage_duration(engine=engine, stage=stage, status=status, duration_ms=duration_ms)
+    record_stage_event(
+        event_type="chat_stage",
+        name=stage,
+        status=status,
+        duration_ms=duration_ms,
+        engine=engine,
+    )
 
 
 def record_chat_timeout(*, flow: str, stage: str) -> None:
     _metrics_store.record_chat_timeout(flow=flow, stage=stage)
+    record_stage_event(
+        event_type="chat_timeout",
+        name=stage,
+        status="timeout",
+        timeout=True,
+        flow=flow,
+    )
 
 
 def record_chat_tool_execution(*, tool: str, status: str, duration_ms: float) -> None:
@@ -394,18 +430,44 @@ def record_chat_tool_failure(*, tool: str, error_type: str) -> None:
 
 def record_chat_fallback(*, flow: str, reason: str) -> None:
     _metrics_store.record_chat_fallback(flow=flow, reason=reason)
+    record_stage_event(
+        event_type="chat_fallback",
+        name=flow,
+        status="fallback",
+        flow=flow,
+        reason=reason,
+    )
 
 
 def record_chat_rag_usage(*, context: str, used: bool, documents_count: int) -> None:
     _metrics_store.record_chat_rag_usage(context=context, used=used, documents_count=documents_count)
+    record_stage_event(
+        event_type="chat_rag",
+        name=context,
+        status="used" if used else "not_used",
+        used=used,
+        documents_count=documents_count,
+    )
 
 
 def record_ai_router_request(*, contexto: str, status: str, duration_ms: float) -> None:
     _metrics_store.record_ai_router(contexto=contexto, status=status, duration_ms=duration_ms)
+    record_stage_event(
+        event_type="ai_router_request",
+        name=contexto,
+        status=status,
+        duration_ms=duration_ms,
+    )
 
 
 def record_ai_router_timeout(*, contexto: str) -> None:
     _metrics_store.record_ai_router_timeout(contexto=contexto)
+    record_stage_event(
+        event_type="ai_router_timeout",
+        name=contexto,
+        status="timeout",
+        timeout=True,
+    )
 
 
 def render_metrics_prometheus() -> str:
