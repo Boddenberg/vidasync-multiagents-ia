@@ -8,7 +8,9 @@ from typing import Any
 
 from openai import BadRequestError, OpenAI
 
+from vidasync_multiagents_ia.config import get_settings
 from vidasync_multiagents_ia.observability import record_external_request, record_external_timeout
+from vidasync_multiagents_ia.observability.telemetry import record_llm_call
 from vidasync_multiagents_ia.observability.payload_preview import preview_json, preview_text, sanitize_url
 
 _SUPPORTED_IMAGE_FORMATS = {"jpeg", "png", "gif", "webp"}
@@ -29,10 +31,99 @@ class OpenAIClient:
         self._logger = logging.getLogger(__name__)
         self._log_payloads = log_payloads
         self._log_max_chars = max(256, log_max_chars)
+        settings = get_settings()
+        self._telemetry_store_previews = settings.telemetry_store_previews
+        self._pricing_by_model = _normalize_pricing_by_model(settings.telemetry_openai_pricing_by_model)
+
+    def _record_llm_call(
+        self,
+        *,
+        operation: str,
+        model: str,
+        status: str,
+        duration_ms: float,
+        prompt_chars: int | None = None,
+        output_chars: int | None = None,
+        prompt_preview: str | None = None,
+        response_preview: str | None = None,
+        response: Any | None = None,
+        error_type: str | None = None,
+        error_message: str | None = None,
+        timeout: bool = False,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> None:
+        usage = _extract_usage(response)
+        usage_metadata = usage.get("usage_metadata") or {}
+        merged_metadata = dict(metadata_json or {})
+        if usage_metadata:
+            merged_metadata["usage"] = usage_metadata
+
+        record_llm_call(
+            provider="openai",
+            operation=operation,
+            model=model,
+            provider_response_id=_coalesce_attr(response, "id"),
+            status=status,
+            timeout=timeout,
+            duration_ms=duration_ms,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            total_tokens=usage.get("total_tokens"),
+            cost_usd=self._estimate_cost_usd(
+                model=model,
+                input_tokens=usage.get("input_tokens"),
+                output_tokens=usage.get("output_tokens"),
+                cached_input_tokens=usage.get("cached_input_tokens"),
+            ),
+            prompt_chars=prompt_chars,
+            output_chars=output_chars,
+            error_type=error_type,
+            error_message=error_message,
+            prompt_preview_masked=prompt_preview,
+            response_preview_masked=response_preview,
+            metadata_json=merged_metadata,
+        )
+
+    def _estimate_cost_usd(
+        self,
+        *,
+        model: str,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        cached_input_tokens: int | None,
+    ) -> float | None:
+        pricing = self._pricing_by_model.get(model) or self._pricing_by_model.get(model.lower())
+        if not pricing:
+            return None
+
+        input_rate = _coalesce_float(pricing.get("input_per_million"))
+        output_rate = _coalesce_float(pricing.get("output_per_million"))
+        cached_rate = _coalesce_float(pricing.get("cached_input_per_million"))
+        if input_rate is None and output_rate is None:
+            return None
+
+        normal_input_tokens = max(0, int(input_tokens or 0) - int(cached_input_tokens or 0))
+        total_cost = 0.0
+        if input_rate is not None and normal_input_tokens:
+            total_cost += normal_input_tokens * input_rate / 1_000_000.0
+        if cached_rate is not None and cached_input_tokens:
+            total_cost += int(cached_input_tokens) * cached_rate / 1_000_000.0
+        elif input_rate is not None and cached_input_tokens:
+            total_cost += int(cached_input_tokens) * input_rate / 1_000_000.0
+        if output_rate is not None and output_tokens:
+            total_cost += int(output_tokens) * output_rate / 1_000_000.0
+        return round(total_cost, 10)
+
+    def _telemetry_preview_text(self, value: str | bytes | None) -> str | None:
+        if not self._telemetry_store_previews:
+            return None
+        return preview_text(value, max_chars=min(self._log_max_chars, 2000))
 
     def generate_text(self, *, model: str, prompt: str) -> str:
         operation = "generate_text"
         started = perf_counter()
+        prompt_preview = self._preview_text(prompt)
+        telemetry_prompt_preview = self._telemetry_preview_text(prompt)
         self._logger.info(
             "openai.request",
             extra={
@@ -40,13 +131,14 @@ class OpenAIClient:
                 "operation": operation,
                 "model": model,
                 "prompt_chars": len(prompt),
-                "prompt_preview": self._preview_text(prompt),
+                "prompt_preview": prompt_preview,
             },
         )
         try:
             response = self._client.responses.create(model=model, input=prompt)
             output = response.output_text or ""
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -56,12 +148,24 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
-                    "response_preview": self._preview_text(output),
+                    "response_preview": response_preview,
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(prompt),
+                output_chars=len(output),
+                prompt_preview=telemetry_prompt_preview,
+                response_preview=self._telemetry_preview_text(output),
+                response=response,
+                metadata_json={"api": "responses"},
+            )
             return output
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -78,6 +182,18 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(prompt),
+                prompt_preview=telemetry_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={"api": "responses"},
+            )
             raise
 
     def generate_json_from_image(
@@ -90,6 +206,11 @@ class OpenAIClient:
     ) -> dict[str, Any]:
         operation = "generate_json_from_image"
         started = perf_counter()
+        system_prompt_preview = self._preview_text(system_prompt)
+        user_prompt_preview = self._preview_text(user_prompt)
+        combined_prompt_preview = self._telemetry_preview_text(
+            f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        )
         self._logger.info(
             "openai.request",
             extra={
@@ -98,8 +219,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "system_prompt_preview": self._preview_text(system_prompt),
-                "user_prompt_preview": self._preview_text(user_prompt),
+                "system_prompt_preview": system_prompt_preview,
+                "user_prompt_preview": user_prompt_preview,
                 "image_url": sanitize_url(image_url),
             },
         )
@@ -114,6 +235,7 @@ class OpenAIClient:
             output_text = response.output_text or ""
             parsed = _extract_json_object(output_text)
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output_text)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -123,13 +245,31 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
-                    "response_preview": self._preview_text(output_text),
+                    "response_preview": response_preview,
                     "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                output_chars=len(output_text),
+                prompt_preview=combined_prompt_preview,
+                response_preview=self._telemetry_preview_text(output_text),
+                response=response,
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "image",
+                    "image_url": sanitize_url(image_url),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             return parsed
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -146,6 +286,24 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                prompt_preview=combined_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "image",
+                    "image_url": sanitize_url(image_url),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             raise
 
     def extract_text_from_image(
@@ -158,6 +316,11 @@ class OpenAIClient:
     ) -> str:
         operation = "extract_text_from_image"
         started = perf_counter()
+        system_prompt_preview = self._preview_text(system_prompt)
+        user_prompt_preview = self._preview_text(user_prompt)
+        combined_prompt_preview = self._telemetry_preview_text(
+            f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        )
         self._logger.info(
             "openai.request",
             extra={
@@ -166,8 +329,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "system_prompt_preview": self._preview_text(system_prompt),
-                "user_prompt_preview": self._preview_text(user_prompt),
+                "system_prompt_preview": system_prompt_preview,
+                "user_prompt_preview": user_prompt_preview,
                 "image_url": sanitize_url(image_url),
             },
         )
@@ -181,6 +344,7 @@ class OpenAIClient:
             )
             output = (response.output_text or "").strip()
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -190,12 +354,30 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
-                    "response_preview": self._preview_text(output),
+                    "response_preview": response_preview,
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                output_chars=len(output),
+                prompt_preview=combined_prompt_preview,
+                response_preview=self._telemetry_preview_text(output),
+                response=response,
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "image",
+                    "image_url": sanitize_url(image_url),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             return output
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -212,6 +394,24 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                prompt_preview=combined_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "image",
+                    "image_url": sanitize_url(image_url),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             raise
 
     def extract_text_from_pdf(
@@ -225,6 +425,11 @@ class OpenAIClient:
     ) -> str:
         operation = "extract_text_from_pdf"
         started = perf_counter()
+        system_prompt_preview = self._preview_text(system_prompt)
+        user_prompt_preview = self._preview_text(user_prompt)
+        combined_prompt_preview = self._telemetry_preview_text(
+            f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        )
         self._logger.info(
             "openai.request",
             extra={
@@ -233,8 +438,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "system_prompt_preview": self._preview_text(system_prompt),
-                "user_prompt_preview": self._preview_text(user_prompt),
+                "system_prompt_preview": system_prompt_preview,
+                "user_prompt_preview": user_prompt_preview,
                 "file_name": filename,
                 "pdf_bytes": len(pdf_bytes),
             },
@@ -270,6 +475,7 @@ class OpenAIClient:
             )
             output = (response.output_text or "").strip()
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -279,12 +485,31 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
-                    "response_preview": self._preview_text(output),
+                    "response_preview": response_preview,
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                output_chars=len(output),
+                prompt_preview=combined_prompt_preview,
+                response_preview=self._telemetry_preview_text(output),
+                response=response,
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "pdf",
+                    "file_name": filename,
+                    "pdf_bytes": len(pdf_bytes),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             return output
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -301,6 +526,25 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                prompt_preview=combined_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "pdf",
+                    "file_name": filename,
+                    "pdf_bytes": len(pdf_bytes),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             raise
         finally:
             if file_id:
@@ -328,6 +572,11 @@ class OpenAIClient:
     ) -> dict[str, Any]:
         operation = "generate_json_from_pdf"
         started = perf_counter()
+        system_prompt_preview = self._preview_text(system_prompt)
+        user_prompt_preview = self._preview_text(user_prompt)
+        combined_prompt_preview = self._telemetry_preview_text(
+            f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        )
         self._logger.info(
             "openai.request",
             extra={
@@ -336,8 +585,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "system_prompt_preview": self._preview_text(system_prompt),
-                "user_prompt_preview": self._preview_text(user_prompt),
+                "system_prompt_preview": system_prompt_preview,
+                "user_prompt_preview": user_prompt_preview,
                 "file_name": filename,
                 "pdf_bytes": len(pdf_bytes),
             },
@@ -374,6 +623,7 @@ class OpenAIClient:
             output_text = response.output_text or ""
             parsed = _extract_json_object(output_text)
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output_text)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -383,13 +633,32 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
-                    "response_preview": self._preview_text(output_text),
+                    "response_preview": response_preview,
                     "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                output_chars=len(output_text),
+                prompt_preview=combined_prompt_preview,
+                response_preview=self._telemetry_preview_text(output_text),
+                response=response,
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "pdf",
+                    "file_name": filename,
+                    "pdf_bytes": len(pdf_bytes),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             return parsed
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -406,6 +675,25 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                prompt_preview=combined_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "pdf",
+                    "file_name": filename,
+                    "pdf_bytes": len(pdf_bytes),
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             raise
         finally:
             if file_id:
@@ -430,6 +718,11 @@ class OpenAIClient:
     ) -> dict[str, Any]:
         operation = "generate_json_from_text"
         started = perf_counter()
+        system_prompt_preview = self._preview_text(system_prompt)
+        user_prompt_preview = self._preview_text(user_prompt)
+        combined_prompt_preview = self._telemetry_preview_text(
+            f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        )
         self._logger.info(
             "openai.request",
             extra={
@@ -438,8 +731,8 @@ class OpenAIClient:
                 "model": model,
                 "system_prompt_chars": len(system_prompt),
                 "user_prompt_chars": len(user_prompt),
-                "system_prompt_preview": self._preview_text(system_prompt),
-                "user_prompt_preview": self._preview_text(user_prompt),
+                "system_prompt_preview": system_prompt_preview,
+                "user_prompt_preview": user_prompt_preview,
             },
         )
         try:
@@ -460,6 +753,7 @@ class OpenAIClient:
             output_text = response.output_text or ""
             parsed = _extract_json_object(output_text)
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output_text)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -469,13 +763,30 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output_text),
-                    "response_preview": self._preview_text(output_text),
+                    "response_preview": response_preview,
                     "response_json_preview": self._preview_json(parsed),
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                output_chars=len(output_text),
+                prompt_preview=combined_prompt_preview,
+                response_preview=self._telemetry_preview_text(output_text),
+                response=response,
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "text",
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             return parsed
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -492,6 +803,23 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                prompt_chars=len(system_prompt) + len(user_prompt),
+                prompt_preview=combined_prompt_preview,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "responses",
+                    "input_kind": "text",
+                    "system_prompt_chars": len(system_prompt),
+                    "user_prompt_chars": len(user_prompt),
+                },
+            )
             raise
 
     def transcribe_audio(
@@ -526,6 +854,7 @@ class OpenAIClient:
             )
             output = (getattr(response, "text", None) or "").strip()
             duration_ms = (perf_counter() - started) * 1000.0
+            response_preview = self._preview_text(output)
             self._logger.info(
                 "openai.response",
                 extra={
@@ -535,12 +864,28 @@ class OpenAIClient:
                     "status": "ok",
                     "duration_ms": round(duration_ms, 4),
                     "output_chars": len(output),
-                    "response_preview": self._preview_text(output),
+                    "response_preview": response_preview,
                 },
             )
             record_external_request(client="openai", operation=operation, status="ok", duration_ms=duration_ms)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status="ok",
+                duration_ms=duration_ms,
+                output_chars=len(output),
+                response_preview=self._telemetry_preview_text(output),
+                response=response,
+                metadata_json={
+                    "api": "audio.transcriptions",
+                    "input_kind": "audio",
+                    "file_name": filename,
+                    "audio_bytes": len(audio_bytes),
+                    "language": language,
+                },
+            )
             return output
-        except Exception:
+        except Exception as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             status = _resolve_error_status()
             self._logger.exception(
@@ -557,6 +902,22 @@ class OpenAIClient:
             record_external_request(client="openai", operation=operation, status=status, duration_ms=duration_ms)
             if status == "timeout":
                 record_external_timeout(client="openai", operation=operation)
+            self._record_llm_call(
+                operation=operation,
+                model=model,
+                status=status,
+                duration_ms=duration_ms,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                timeout=status == "timeout",
+                metadata_json={
+                    "api": "audio.transcriptions",
+                    "input_kind": "audio",
+                    "file_name": filename,
+                    "audio_bytes": len(audio_bytes),
+                    "language": language,
+                },
+            )
             raise
 
     def _preview_text(self, value: str | bytes | None) -> str | None:
@@ -810,3 +1171,80 @@ def _mime_type_from_image_format(image_format: str) -> str:
         "webp": "image/webp",
     }
     return mime_by_format[image_format]
+
+
+def _extract_usage(response: Any | None) -> dict[str, Any]:
+    usage = _coalesce_attr(response, "usage")
+    input_tokens = _coalesce_int(_coalesce_attr(usage, "input_tokens"))
+    output_tokens = _coalesce_int(_coalesce_attr(usage, "output_tokens"))
+    total_tokens = _coalesce_int(_coalesce_attr(usage, "total_tokens"))
+    if input_tokens is None:
+        input_tokens = _coalesce_int(_coalesce_attr(usage, "prompt_tokens"))
+    if output_tokens is None:
+        output_tokens = _coalesce_int(_coalesce_attr(usage, "completion_tokens"))
+    input_tokens_details = _coalesce_attr(usage, "input_tokens_details")
+    output_tokens_details = _coalesce_attr(usage, "output_tokens_details")
+    cached_input_tokens = _coalesce_int(_coalesce_attr(input_tokens_details, "cached_tokens"))
+
+    usage_metadata = {}
+    if usage is not None:
+        usage_metadata = _json_safe(usage)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "usage_metadata": usage_metadata,
+    }
+
+
+def _normalize_pricing_by_model(value: dict[str, dict[str, float]] | None) -> dict[str, dict[str, float]]:
+    normalized: dict[str, dict[str, float]] = {}
+    if not isinstance(value, dict):
+        return normalized
+
+    for model_name, pricing in value.items():
+        if not isinstance(model_name, str) or not isinstance(pricing, dict):
+            continue
+        cleaned_pricing: dict[str, float] = {}
+        for key, amount in pricing.items():
+            normalized_amount = _coalesce_float(amount)
+            if normalized_amount is not None:
+                cleaned_pricing[str(key)] = normalized_amount
+        if cleaned_pricing:
+            normalized[model_name] = cleaned_pricing
+            normalized[model_name.lower()] = cleaned_pricing
+    return normalized
+
+
+def _coalesce_attr(value: Any, key: str) -> Any | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _coalesce_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coalesce_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_safe(value: Any) -> Any:
+    try:
+        return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    except Exception:
+        return str(value)
