@@ -88,6 +88,38 @@ def test_chat_judge_supabase_repository_lanca_erro_quando_supabase_retorna_http_
         repository.upsert(_build_tracking_record())
 
 
+def test_chat_judge_supabase_repository_fetch_by_evaluation_id_retorna_registro(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    def _fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        return _FakeHTTPResponse([_build_tracking_record().model_dump(mode="json")])
+
+    monkeypatch.setattr(
+        "vidasync_multiagents_ia.services.chat_judge_supabase_repository.urlopen",
+        _fake_urlopen,
+    )
+
+    repository = ChatJudgeSupabaseRepository(
+        settings=Settings(
+            supabase_url="https://example.supabase.co",
+            supabase_service_role_key="service-role-key",
+            chat_judge_supabase_table="llm_judge_evaluations",
+            chat_judge_supabase_timeout_seconds=9.5,
+        )
+    )
+
+    stored = repository.fetch_by_evaluation_id("eval-123")
+
+    assert stored is not None
+    assert stored.evaluation_id == "eval-123"
+    assert "evaluation_id=eq.eval-123" in captured["url"]
+    assert captured["timeout"] == 9.5
+
+
 def _build_tracking_record() -> ChatJudgeTrackingRecord:
     return ChatJudgeTrackingRecord.model_validate(
         {

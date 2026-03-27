@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from vidasync_multiagents_ia.api.dependencies import (
     get_chat_judge_async_service,
     get_chat_judge_service,
+    get_chat_judge_tracking_service,
     get_openai_chat_service,
 )
 from vidasync_multiagents_ia.main import app
@@ -10,8 +11,10 @@ from vidasync_multiagents_ia.schemas import (
     ChatJudgeApprovalResult,
     ChatJudgeCriteriaAssessment,
     ChatJudgeCriterionAssessment,
+    ChatJudgeExecutionRef,
     ChatJudgeResult,
     ChatJudgeScoreResult,
+    ChatJudgeTelemetryResponse,
     ChatRoteamento,
     ChatUIAction,
     IntencaoChatDetectada,
@@ -91,11 +94,22 @@ class _FakeOpenAIChatServicePlanoAnexo:
 
 class _FakeChatJudgeAsyncService:
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
+        self.prepare_calls: list[dict[str, object]] = []
+        self.execute_calls: list[object] = []
 
-    def evaluate_chat_response(self, **kwargs: object) -> str:
-        self.calls.append(kwargs)
-        return "eval-123"
+    def prepare_chat_response_evaluation(self, **kwargs: object) -> object:
+        self.prepare_calls.append(kwargs)
+        return type(
+            "_PreparedJudge",
+            (),
+            {
+                "execution": ChatJudgeExecutionRef(evaluation_id="eval-123", status="pending"),
+            },
+        )()
+
+    def execute_prepared_chat_response_evaluation(self, prepared: object) -> str:
+        self.execute_calls.append(prepared)
+        return getattr(getattr(prepared, "execution"), "evaluation_id")
 
 
 def test_openai_chat_route_retorna_intencao_detectada() -> None:
@@ -121,8 +135,11 @@ def test_openai_chat_route_retorna_intencao_detectada() -> None:
         assert body["intencao_detectada"]["confianca"] == 0.91
         assert body["roteamento"]["pipeline"] == "tool_calculo"
         assert body["roteamento"]["handler"] == "handler_calcular_imc"
-        assert len(judge_async_service.calls) == 1
-        call = judge_async_service.calls[0]
+        assert body["judge"]["evaluation_id"] == "eval-123"
+        assert body["judge"]["status"] == "pending"
+        assert len(judge_async_service.prepare_calls) == 1
+        assert len(judge_async_service.execute_calls) == 1
+        call = judge_async_service.prepare_calls[0]
         assert call["prompt"] == "Quero calcular imc"
         assert call["conversation_id"] == "conv-123"
         assert call["usar_memoria"] is False
@@ -155,7 +172,8 @@ def test_openai_chat_route_repassa_plano_anexo() -> None:
         assert body["response"] == "Plano recebido."
         assert body["intencao_detectada"]["intencao"] == "enviar_plano_nutri"
         assert body["roteamento"]["pipeline"] == "pipeline_plano_alimentar"
-        assert judge_async_service.calls[0]["plano_anexo_presente"] is True
+        assert body["judge"]["evaluation_id"] == "eval-123"
+        assert judge_async_service.prepare_calls[0]["plano_anexo_presente"] is True
     finally:
         app.dependency_overrides.clear()
 
@@ -213,7 +231,8 @@ def test_openai_chat_route_repassa_refeicao_anexo() -> None:
         body = response.json()
         assert body["response"] == "Refeicao recebida."
         assert body["intencao_detectada"]["intencao"] == "registrar_refeicao_foto"
-        assert judge_async_service.calls[0]["refeicao_anexo_presente"] is True
+        assert body["judge"]["evaluation_id"] == "eval-123"
+        assert judge_async_service.prepare_calls[0]["refeicao_anexo_presente"] is True
     finally:
         app.dependency_overrides.clear()
 
@@ -272,6 +291,7 @@ def test_openai_chat_route_retorna_acoes_ui_para_guardrail() -> None:
         assert body["roteamento"]["pipeline"] == "guardrail_chat"
         assert body["roteamento"]["acoes_ui"][0]["action_id"] == "open_calorie_counter"
         assert body["roteamento"]["acoes_ui"][0]["target"] == "calorie_counter"
+        assert body["judge"]["evaluation_id"] == "eval-123"
     finally:
         app.dependency_overrides.clear()
 
@@ -356,5 +376,106 @@ def test_openai_chat_judge_route_retorna_resultado_estruturado() -> None:
         assert body["approval"]["decision"] == "approved"
         assert body["score"]["overall_score"] == 91.2
         assert body["criteria"]["correctness"]["score"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_openai_chat_judge_tracking_route_retorna_payload_pronto_para_o_front() -> None:
+    class _FakeChatJudgeTrackingService:
+        def fetch_by_evaluation_id(self, evaluation_id: str) -> ChatJudgeTelemetryResponse:
+            assert evaluation_id == "eval-123"
+            return ChatJudgeTelemetryResponse(
+                evaluation_id="eval-123",
+                request_id="req-123",
+                conversation_id="conv-123",
+                message_id="msg-123",
+                judge_status="completed",
+                source_model="gpt-4o-mini",
+                judge_model="gpt-4o-mini",
+                source_duration_ms=88.0,
+                judge_duration_ms=155.2,
+                overall_score=91.2,
+                decision="approved",
+                approved=True,
+                summary="Boa resposta.",
+                improvements=["Pode citar variacao por porcao."],
+                criterion_scores={
+                    "coherence": 5,
+                    "context": 4,
+                    "correctness": 5,
+                    "efficiency": 4,
+                    "fidelity": 5,
+                    "quality": 4,
+                    "usefulness": 4,
+                    "safety": 5,
+                    "tone_of_voice": 4,
+                },
+                criterion_reasons={
+                    "coherence": "Fluxo textual consistente.",
+                    "context": "Responde ao pedido do usuario.",
+                    "correctness": "Valor plausivel.",
+                    "efficiency": "Resposta objetiva.",
+                    "fidelity": "Nao inventa fontes.",
+                    "quality": "Boa clareza.",
+                    "usefulness": "Ajuda o usuario.",
+                    "safety": "Sem risco relevante.",
+                    "tone_of_voice": "Tom profissional.",
+                },
+                criteria=ChatJudgeCriteriaAssessment(
+                    coherence=ChatJudgeCriterionAssessment(score=5, reason="Fluxo textual consistente."),
+                    context=ChatJudgeCriterionAssessment(score=4, reason="Responde ao pedido do usuario."),
+                    correctness=ChatJudgeCriterionAssessment(score=5, reason="Valor plausivel."),
+                    efficiency=ChatJudgeCriterionAssessment(score=4, reason="Resposta objetiva."),
+                    fidelity=ChatJudgeCriterionAssessment(score=5, reason="Nao inventa fontes."),
+                    quality=ChatJudgeCriterionAssessment(score=4, reason="Boa clareza."),
+                    usefulness=ChatJudgeCriterionAssessment(score=4, reason="Ajuda o usuario."),
+                    safety=ChatJudgeCriterionAssessment(score=5, reason="Sem risco relevante."),
+                    tone_of_voice=ChatJudgeCriterionAssessment(score=4, reason="Tom profissional."),
+                ),
+                score=ChatJudgeScoreResult(
+                    criteria_scores={
+                        "coherence": 5,
+                        "context": 4,
+                        "correctness": 5,
+                        "efficiency": 4,
+                        "fidelity": 5,
+                        "quality": 4,
+                        "usefulness": 4,
+                        "safety": 5,
+                        "tone_of_voice": 4,
+                    },
+                    weighted_contributions={
+                        "coherence": 8.0,
+                        "context": 8.0,
+                        "correctness": 18.0,
+                        "efficiency": 4.8,
+                        "fidelity": 14.0,
+                        "quality": 8.0,
+                        "usefulness": 9.6,
+                        "safety": 16.0,
+                        "tone_of_voice": 4.8,
+                    },
+                    overall_score=91.2,
+                ),
+                approval=ChatJudgeApprovalResult(
+                    decision="approved",
+                    approved=True,
+                    rejection_reasons=[],
+                ),
+                error=None,
+            )
+
+    app.dependency_overrides[get_chat_judge_tracking_service] = lambda: _FakeChatJudgeTrackingService()
+    client = TestClient(app)
+
+    try:
+        response = client.get("/v1/openai/chat/judge/eval-123")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["judge_status"] == "completed"
+        assert body["overall_score"] == 91.2
+        assert body["approved"] is True
+        assert body["criterion_scores"]["correctness"] == 5
+        assert body["criterion_reasons"]["correctness"] == "Valor plausivel."
     finally:
         app.dependency_overrides.clear()

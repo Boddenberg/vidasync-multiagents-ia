@@ -1,4 +1,5 @@
 from vidasync_multiagents_ia.config import Settings
+from vidasync_multiagents_ia.observability import record_llm_call
 from vidasync_multiagents_ia.schemas import (
     ChatJudgeApprovalResult,
     ChatJudgeCriteriaAssessment,
@@ -20,6 +21,15 @@ class _FakeRepository:
     def upsert(self, record):
         self.records.append(record)
         return record
+
+
+class _FakeTelemetryRepository:
+    def __init__(self, *, enabled: bool = False) -> None:
+        self.enabled = enabled
+        self.batches = []
+
+    def persist(self, batch) -> None:
+        self.batches.append(batch)
 
 
 class _FakeJudgeService:
@@ -86,9 +96,27 @@ class _FakeJudgeService:
         )
 
 
+class _FakeJudgeServiceWithTelemetry(_FakeJudgeService):
+    def evaluate(self, request):
+        record_llm_call(
+            provider="openai",
+            operation="generate_json_from_text",
+            model="gpt-4o-mini",
+            status="ok",
+            duration_ms=12.5,
+            input_tokens=120,
+            output_tokens=30,
+            total_tokens=150,
+            prompt_chars=320,
+            output_chars=280,
+        )
+        return super().evaluate(request)
+
+
 def test_chat_judge_async_service_persiste_pending_e_completed() -> None:
     repository = _FakeRepository()
     judge_service = _FakeJudgeService()
+    telemetry_repository = _FakeTelemetryRepository()
     service = ChatJudgeAsyncService(
         settings=Settings(
             chat_judge_enabled=True,
@@ -98,6 +126,7 @@ def test_chat_judge_async_service_persiste_pending_e_completed() -> None:
         ),
         judge_service=judge_service,
         repository=repository,
+        telemetry_repository=telemetry_repository,
     )
 
     evaluation_id = service.evaluate_chat_response(
@@ -122,6 +151,7 @@ def test_chat_judge_async_service_persiste_pending_e_completed() -> None:
 
 def test_chat_judge_async_service_persiste_failed_quando_judge_falha() -> None:
     repository = _FakeRepository()
+    telemetry_repository = _FakeTelemetryRepository()
     service = ChatJudgeAsyncService(
         settings=Settings(
             chat_judge_enabled=True,
@@ -131,6 +161,7 @@ def test_chat_judge_async_service_persiste_failed_quando_judge_falha() -> None:
         ),
         judge_service=_FakeJudgeService(should_fail=True),
         repository=repository,
+        telemetry_repository=telemetry_repository,
     )
 
     evaluation_id = service.evaluate_chat_response(
@@ -153,6 +184,7 @@ def test_chat_judge_async_service_persiste_failed_quando_judge_falha() -> None:
 
 def test_chat_judge_async_service_ignora_quando_desabilitado() -> None:
     repository = _FakeRepository(enabled=False)
+    telemetry_repository = _FakeTelemetryRepository()
     service = ChatJudgeAsyncService(
         settings=Settings(
             chat_judge_enabled=True,
@@ -160,6 +192,7 @@ def test_chat_judge_async_service_ignora_quando_desabilitado() -> None:
         ),
         judge_service=_FakeJudgeService(),
         repository=repository,
+        telemetry_repository=telemetry_repository,
     )
 
     evaluation_id = service.evaluate_chat_response(
@@ -175,6 +208,43 @@ def test_chat_judge_async_service_ignora_quando_desabilitado() -> None:
 
     assert evaluation_id is None
     assert repository.records == []
+
+
+def test_chat_judge_async_service_registra_telemetria_do_background() -> None:
+    repository = _FakeRepository()
+    telemetry_repository = _FakeTelemetryRepository(enabled=True)
+    service = ChatJudgeAsyncService(
+        settings=Settings(
+            chat_judge_enabled=True,
+            chat_judge_chat_async_enabled=True,
+            supabase_url="https://example.supabase.co",
+            supabase_service_role_key="service-role-key",
+        ),
+        judge_service=_FakeJudgeServiceWithTelemetry(),
+        repository=repository,
+        telemetry_repository=telemetry_repository,
+    )
+
+    evaluation_id = service.evaluate_chat_response(
+        prompt="Quantas calorias tem banana?",
+        response=_build_chat_response(),
+        conversation_id="conv-123",
+        usar_memoria=True,
+        metadados_conversa={"request_id": "req-telemetry", "message_id": "msg-telemetry"},
+        plano_anexo_presente=False,
+        refeicao_anexo_presente=False,
+        source_duration_ms=55.0,
+    )
+
+    assert evaluation_id is not None
+    assert len(telemetry_repository.batches) == 1
+    batch = telemetry_repository.batches[0]
+    assert batch.agent_run is not None
+    assert batch.agent_run["request_id"] == "req-telemetry"
+    assert batch.agent_run["agent"] == "chat_judge_async"
+    assert batch.agent_run["llm_calls_count"] == 1
+    assert len(batch.llm_calls) == 1
+    assert batch.llm_calls[0]["operation"] == "generate_json_from_text"
 
 
 def _build_chat_response() -> OpenAIChatResponse:
