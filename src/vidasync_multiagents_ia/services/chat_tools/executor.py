@@ -6,6 +6,7 @@ from vidasync_multiagents_ia.observability import (
     record_chat_timeout,
     record_chat_tool_execution,
     record_chat_tool_failure,
+    record_tool_call,
 )
 from vidasync_multiagents_ia.services.chat_tools.contracts import (
     ChatTool,
@@ -52,6 +53,18 @@ class ChatToolExecutor:
             )
             record_chat_tool_execution(tool=data.tool_name, status="erro", duration_ms=duration_ms)
             record_chat_tool_failure(tool=data.tool_name, error_type=type(exc).__name__)
+            record_tool_call(
+                tool_name=data.tool_name,
+                status="erro",
+                duration_ms=duration_ms,
+                timeout=timeout,
+                error_type=type(exc).__name__,
+                metadata_json={
+                    "idioma": data.idioma,
+                    "intencao": data.intencao.intencao,
+                    "prompt_chars": len(data.prompt),
+                },
+            )
             if timeout:
                 record_chat_timeout(flow="chat_conversacional", stage=f"tool.{data.tool_name}")
             raise
@@ -68,12 +81,36 @@ class ChatToolExecutor:
             )
             record_chat_tool_execution(tool=data.tool_name, status="erro", duration_ms=duration_ms)
             record_chat_tool_failure(tool=data.tool_name, error_type=type(exc).__name__)
+            record_tool_call(
+                tool_name=data.tool_name,
+                status="erro",
+                duration_ms=duration_ms,
+                timeout=timeout,
+                error_type=type(exc).__name__,
+                metadata_json={
+                    "idioma": data.idioma,
+                    "intencao": data.intencao.intencao,
+                    "prompt_chars": len(data.prompt),
+                },
+            )
             if timeout:
                 record_chat_timeout(flow="chat_conversacional", stage=f"tool.{data.tool_name}")
             raise ServiceError(f"Falha inesperada na tool '{data.tool_name}'.", status_code=502) from exc
 
         duration_ms = (perf_counter() - started) * 1000.0
         record_chat_tool_execution(tool=data.tool_name, status=output.status, duration_ms=duration_ms)
+        record_tool_call(
+            tool_name=data.tool_name,
+            status=output.status,
+            duration_ms=duration_ms,
+            warnings_count=len(output.warnings),
+            precisa_revisao=output.precisa_revisao,
+            metadata_json={
+                "idioma": data.idioma,
+                "intencao": data.intencao.intencao,
+                "prompt_chars": len(data.prompt),
+            },
+        )
         self._logger.info(
             "chat_tool_executor.completed",
             extra={

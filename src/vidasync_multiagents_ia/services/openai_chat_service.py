@@ -7,6 +7,7 @@ from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.observability import (
     record_chat_flow_execution,
     record_chat_timeout,
+    set_agent_run_metadata,
 )
 from vidasync_multiagents_ia.observability.payload_preview import preview_text
 from vidasync_multiagents_ia.schemas import OpenAIChatResponse
@@ -69,6 +70,19 @@ class OpenAIChatService:
                 else None,
             },
         )
+        set_agent_run_metadata(
+            agent="openai_chat",
+            flow="chat_conversacional",
+            engine=self._settings.chat_orchestrator_engine,
+            conversation_id=conversation_id,
+            status="em_andamento",
+            metadata_json={
+                "usar_memoria": usar_memoria,
+                "prompt_chars": len(prompt),
+                "plano_anexo_presente": bool(plano_anexo),
+                "refeicao_anexo_presente": bool(refeicao_anexo),
+            },
+        )
         try:
             output = self._chat_orchestrator.orchestrate_chat(
                 request=AiOrchestratorRequest(
@@ -104,6 +118,11 @@ class OpenAIChatService:
                 handler="indefinido",
                 status="erro",
                 duration_ms=duration_ms,
+            )
+            set_agent_run_metadata(
+                status="erro",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
             )
             if timeout:
                 record_chat_timeout(flow="chat_conversacional", stage="orquestracao")
@@ -142,6 +161,20 @@ class OpenAIChatService:
             handler=output.roteamento.handler,
             status=output.roteamento.status,
             duration_ms=duration_ms,
+        )
+        set_agent_run_metadata(
+            status=output.roteamento.status,
+            conversation_id=output.conversation_id,
+            intencao=output.intencao.intencao,
+            pipeline=output.roteamento.pipeline,
+            handler=output.roteamento.handler,
+            warnings_count=len(output.roteamento.warnings),
+            precisa_revisao=output.roteamento.precisa_revisao,
+            metadata_json={
+                "memory_turns": output.memoria.total_turnos if output.memoria else 0,
+                "pipeline_id": output.pipeline_id,
+                "etapas_executadas": output.etapas_executadas,
+            },
         )
         return OpenAIChatResponse(
             model=self._settings.openai_model,

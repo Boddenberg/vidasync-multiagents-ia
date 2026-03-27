@@ -8,7 +8,11 @@ from typing import Any, Callable
 
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
-from vidasync_multiagents_ia.observability import record_ai_router_request, record_ai_router_timeout
+from vidasync_multiagents_ia.observability import (
+    record_ai_router_request,
+    record_ai_router_timeout,
+    set_agent_run_metadata,
+)
 from vidasync_multiagents_ia.observability.context import reset_trace_id, set_trace_id
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import AIRouterRequest, AIRouterResponse
@@ -72,6 +76,15 @@ class AIRouterService:
                 else None,
             },
         )
+        set_agent_run_metadata(
+            agent="ai_router",
+            contexto=contexto,
+            idioma=request.idioma,
+            status="em_andamento",
+            metadata_json={
+                "payload_keys": sorted(payload.keys()),
+            },
+        )
         try:
             resolve_started = perf_counter()
             stage = "resolver_handler"
@@ -119,6 +132,13 @@ class AIRouterService:
                 },
             )
             record_ai_router_request(contexto=contexto, status=execution.status, duration_ms=total_duration_ms)
+            set_agent_run_metadata(
+                status=execution.status,
+                contexto=contexto,
+                idioma=request.idioma,
+                warnings_count=len(execution.warnings),
+                precisa_revisao=execution.precisa_revisao,
+            )
             if execution.status == "parcial":
                 self._logger.info(
                     "ai_router.warning",
@@ -152,6 +172,14 @@ class AIRouterService:
                 },
             )
             record_ai_router_request(contexto=contexto, status="erro", duration_ms=total_duration_ms)
+            set_agent_run_metadata(
+                status="erro",
+                contexto=contexto,
+                idioma=request.idioma,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                metadata_json={"failed_stage": stage},
+            )
             if timeout:
                 record_ai_router_timeout(contexto=contexto)
             raise
