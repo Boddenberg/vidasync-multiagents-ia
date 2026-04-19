@@ -2,6 +2,8 @@
 *.py[cod]
 *.egg-info/
 .venv/
+.chroma/
+build/
 .env
 .env.*
 !.env.example
@@ -11,3 +13,4 @@
 .vscode/
 .idea/
 .DS_Store
+supabase/.temp/
