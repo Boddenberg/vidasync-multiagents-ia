@@ -213,7 +213,7 @@ def _normalize_profile(payload: dict[str, Any]) -> dict[str, Any]:
 def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
     lower = _normalize_match_text(prompt)
     restricoes: list[str] = []
-    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar", "sem aÃ§Ãºcar"):
+    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar"):
         if termo in lower:
             restricoes.append(termo)
     objetivo = None

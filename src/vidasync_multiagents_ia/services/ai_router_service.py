@@ -688,7 +688,7 @@ def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
         normalized = normalized.encode("ascii", "ignore").decode("ascii")
         if normalized in {"true", "1", "sim", "yes"}:
             return True
-        if normalized in {"false", "0", "nao", "nÃ£o", "no"}:
+        if normalized in {"false", "0", "nao", "no"}:
             return False
     return default
 
