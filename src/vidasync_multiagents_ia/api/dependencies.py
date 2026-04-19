@@ -10,6 +10,7 @@ from vidasync_multiagents_ia.services import (
     FotoAlimentosService,
     FrasePorcoesService,
     ImagemTextoService,
+    NutriChatService,
     OpenFoodFactsService,
     OpenAIChatService,
     OrchestratorService,
@@ -26,6 +27,14 @@ from vidasync_multiagents_ia.services import (
 @lru_cache(maxsize=1)
 def get_openai_chat_service() -> OpenAIChatService:
     return OpenAIChatService(settings=get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_nutri_chat_service() -> NutriChatService:
+    return NutriChatService(
+        settings=get_settings(),
+        openai_chat_service=get_openai_chat_service(),
+    )
 
 
 @lru_cache(maxsize=1)

@@ -56,6 +56,7 @@ from vidasync_multiagents_ia.schemas.openai_chat import (
     OpenAIChatRequest,
     OpenAIChatResponse,
 )
+from vidasync_multiagents_ia.schemas.nutri_chat import NutriChatRequest, NutriChatResponse
 from vidasync_multiagents_ia.schemas.open_food_facts import (
     OpenFoodFactsNutrients,
     OpenFoodFactsProduct,
@@ -141,6 +142,8 @@ __all__ = [
     "ImagemTextoResponse",
     "OpenAIChatRequest",
     "OpenAIChatResponse",
+    "NutriChatRequest",
+    "NutriChatResponse",
     "OpenFoodFactsNutrients",
     "OpenFoodFactsProduct",
     "OpenFoodFactsSearchRequest",

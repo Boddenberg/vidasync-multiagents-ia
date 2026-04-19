@@ -48,6 +48,7 @@ from vidasync_multiagents_ia.services.foto_calorias_pipeline_teste_service impor
 from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
 from vidasync_multiagents_ia.services.frase_porcoes_service import FrasePorcoesService
 from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
+from vidasync_multiagents_ia.services.nutri_chat_service import NutriChatService
 from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService
 from vidasync_multiagents_ia.services.openai_chat_service import OpenAIChatService
 from vidasync_multiagents_ia.services.orchestrator_service import OrchestratorService
@@ -92,6 +93,7 @@ __all__ = [
     "FotoCaloriasPipelineTesteService",
     "FrasePorcoesService",
     "ImagemTextoService",
+    "NutriChatService",
     "OpenFoodFactsService",
     "OpenAIChatService",
     "OrchestratorService",
