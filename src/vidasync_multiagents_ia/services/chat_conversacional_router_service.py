@@ -174,7 +174,7 @@ class ChatConversacionalRouterService:
         *,
         prompt: str | None = None,
     ) -> tuple[ChatPipelineNome, str]:
-        # /**** Exposicao controlada do registry para etapa de roteamento no orquestrador de chat. ****/
+        # Exposicao controlada do registry para etapa de roteamento no orquestrador de chat.
         handler = self._handlers.get(intencao, self._handlers["conversa_geral"])
         return handler.pipeline, handler.nome_handler
 
@@ -187,7 +187,7 @@ class ChatConversacionalRouterService:
         plano_anexo: dict[str, Any] | None = None,
         refeicao_anexo: dict[str, Any] | None = None,
     ) -> ChatConversacionalRouteResult:
-        # /**** Roteador central por intencao: evita ifs espalhados e facilita adicionar novos handlers/tools. ****/
+        # Roteador central por intencao: evita ifs espalhados e facilita adicionar novos handlers/tools.
         intencao_efetiva, motivo_forcamento_anexo = self._resolve_intencao_para_anexos(
             intencao=intencao,
             plano_anexo=plano_anexo,
@@ -279,7 +279,7 @@ class ChatConversacionalRouterService:
         plano_anexo: dict[str, Any] | None,
         refeicao_anexo: dict[str, Any] | None,
     ) -> tuple[IntencaoChatDetectada, str | None]:
-        # /**** Regras de prioridade de anexo: plano > refeicao (imagem/audio). ****/
+        # Regras de prioridade de anexo: plano > refeicao (imagem/audio).
         if plano_anexo and intencao.intencao != "enviar_plano_nutri":
             return self._override_intencao(
                 intencao=intencao,
@@ -440,7 +440,7 @@ class ChatConversacionalRouterService:
         _: IntencaoChatDetectada,
         __: dict[str, Any] | None,
     ) -> _HandlerPayload:
-        # /**** Roteia calorias/macros com estrategia hibrida: contextual, base estruturada ou tool. ****/
+        # Roteia calorias/macros com estrategia hibrida: contextual, base estruturada ou tool.
         flow_output: ChatCaloriasMacrosFlowOutput = self._calorias_macros_flow_service.executar(
             prompt=prompt,
             idioma="pt-BR",
@@ -493,7 +493,7 @@ class ChatConversacionalRouterService:
         _: IntencaoChatDetectada,
         __: dict[str, Any] | None,
     ) -> _HandlerPayload:
-        # /**** Fluxo dedicado para cadastro por texto livre, com confirmacao orientada para ambiguidade. ****/
+        # Fluxo dedicado para cadastro por texto livre, com confirmacao orientada para ambiguidade.
         flow_output: ChatCadastroRefeicoesFlowOutput = self._cadastro_refeicoes_flow_service.executar(
             prompt=prompt,
             idioma="pt-BR",
@@ -513,7 +513,7 @@ class ChatConversacionalRouterService:
         _: IntencaoChatDetectada,
         plano_anexo: dict[str, Any] | None,
     ) -> _HandlerPayload:
-        # /**** Entrada de plano no chat: aceita texto, foto (url) ou PDF (base64) sem quebrar contrato. ****/
+        # Entrada de plano no chat: aceita texto, foto (url) ou PDF (base64) sem quebrar contrato.
         flow_output: ChatPlanoAlimentarMultimodalFlowOutput = self._plano_alimentar_multimodal_flow_service.executar(
             prompt=prompt,
             idioma="pt-BR",
@@ -655,7 +655,7 @@ class ChatConversacionalRouterService:
         if not prompt_contextualizado:
             return prompt
         if intencao in {"pedir_receitas", "pedir_substituicoes", "pedir_dicas", "conversa_geral"}:
-            # /**** So usa contexto expandido em fluxos conversacionais/contextuais para nao afetar parsers deterministas. ****/
+            # So usa contexto expandido em fluxos conversacionais/contextuais para nao afetar parsers deterministas.
             return prompt_contextualizado
         return prompt
 

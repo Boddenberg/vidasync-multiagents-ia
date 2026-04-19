@@ -245,7 +245,7 @@ def _to_clean_string(value: Any) -> str | None:
 
 
 def _clean_text(value: str) -> str:
-    # /**** Limpeza leve para preservar contexto sem carregar ruido de OCR/formatacao. ****/
+    # Limpeza leve para preservar contexto sem carregar ruido de OCR/formatacao.
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)

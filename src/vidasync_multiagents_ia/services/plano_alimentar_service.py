@@ -58,7 +58,7 @@ class PlanoAlimentarService:
         contexto: str = "estruturar_plano_alimentar",
         idioma: str = "pt-BR",
     ) -> PlanoAlimentarResponse:
-        # /**** Pipeline principal: preprocessa, extrai geral, extrai refeicoes e valida. ****/
+        # Pipeline principal: preprocessa, extrai geral, extrai refeicoes e valida.
         self._ensure_openai_api_key()
         if not textos_fonte:
             raise ServiceError("Campo 'textos_fonte' e obrigatorio.", status_code=400)
@@ -81,7 +81,7 @@ class PlanoAlimentarService:
         )
         plano = self._normalizar_plano(payload_geral)
 
-        # /**** Etapa intermediaria deterministica: texto normalizado -> refeicoes estruturadas. ****/
+        # Etapa intermediaria deterministica: texto normalizado -> refeicoes estruturadas.
         refeicoes_deterministicas = extract_deterministic_meal_sections(pipeline_context.texto_sem_ruido)
         if refeicoes_deterministicas:
             plano.plano_refeicoes = _merge_refeicoes(refeicoes_deterministicas, plano.plano_refeicoes)
@@ -172,7 +172,7 @@ class PlanoAlimentarService:
         pipeline_context: PlanoAlimentarPipelineContext,
         idioma: str,
     ) -> None:
-        # /**** Regras deterministicas para preencher campos criticos e limpar ruido. ****/
+        # Regras deterministicas para preencher campos criticos e limpar ruido.
         texto = pipeline_context.texto_limpo
         self._enriquecer_profissional(plano=plano, texto=texto)
         self._enriquecer_hidratacao(plano=plano, texto=texto)
@@ -194,7 +194,7 @@ class PlanoAlimentarService:
         plano: PlanoAlimentarEstruturado,
         pipeline_context: PlanoAlimentarPipelineContext,
     ) -> None:
-        # /**** Marca revisoes e calcula confianca para facilitar etapa de judge. ****/
+        # Marca revisoes e calcula confianca para facilitar etapa de judge.
         warnings: list[str] = []
 
         if not plano.plano_refeicoes:
@@ -285,7 +285,7 @@ class PlanoAlimentarService:
         idioma: str,
         texto_consolidado: str,
     ) -> dict[str, Any]:
-        # /**** Agente geral: metadados, objetivos, suplementos, orientacoes e campos globais. ****/
+        # Agente geral: metadados, objetivos, suplementos, orientacoes e campos globais.
         system_prompt = (
             "Voce e um agente de extracao de dados de planos alimentares. "
             "Responda apenas JSON valido, sem markdown. "
@@ -326,7 +326,7 @@ class PlanoAlimentarService:
         idioma: str,
         pipeline_context: PlanoAlimentarPipelineContext,
     ) -> dict[str, Any]:
-        # /**** Agente dedicado para refeicoes segmentadas; falha aqui nao derruba request. ****/
+        # Agente dedicado para refeicoes segmentadas; falha aqui nao derruba request.
         secoes = pipeline_context.secoes_para_prompt()
         if not secoes:
             return {}
@@ -363,7 +363,7 @@ class PlanoAlimentarService:
         payload_refeicoes: dict[str, Any],
         pipeline_context: PlanoAlimentarPipelineContext,
     ) -> None:
-        # /**** Merge por prioridade: refeicoes LLM dedicadas > heuristica > extraida no payload geral. ****/
+        # Merge por prioridade: refeicoes LLM dedicadas > heuristica > extraida no payload geral.
         refeicoes_llm = _normalizar_refeicoes(payload_refeicoes.get("plano_refeicoes"))
         refeicoes_heuristica = _refeicoes_heuristicas_from_context(pipeline_context)
 
@@ -371,7 +371,7 @@ class PlanoAlimentarService:
             plano.plano_refeicoes = _merge_refeicoes(plano.plano_refeicoes, refeicoes_llm)
 
         if refeicoes_heuristica:
-            # /**** Evita duplicar ruido heuristico quando ja existe refeicao valida para o mesmo titulo. ****/
+            # Evita duplicar ruido heuristico quando ja existe refeicao valida para o mesmo titulo.
             refeicoes_heuristica = _filtrar_refeicoes_heuristicas_por_base(
                 refeicoes_heuristica=refeicoes_heuristica,
                 base=plano.plano_refeicoes,
@@ -433,7 +433,7 @@ class PlanoAlimentarService:
         plano: PlanoAlimentarEstruturado,
         texto: str,
     ) -> None:
-        # /**** Ex.: 'Whey protein: 45 g' deve preencher dose quando vier explicita. ****/
+        # Ex.: 'Whey protein: 45 g' deve preencher dose quando vier explicita.
         doses_por_nome = _extrair_doses_suplementos(texto)
         if not doses_por_nome:
             return

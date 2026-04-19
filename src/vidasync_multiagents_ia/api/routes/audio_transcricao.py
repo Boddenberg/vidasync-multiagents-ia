@@ -19,10 +19,10 @@ async def transcrever_audio_usuario(
     settings: Settings = Depends(get_settings),
 ) -> AudioTranscricaoResponse:
     nome_arquivo = (audio_file.filename or "").strip() or "audio_usuario.webm"
-    # /**** Leitura com limite para evitar upload gigante em memoria. ****/
+    # Leitura com limite para evitar upload gigante em memoria.
     audio_bytes = await _read_upload_with_limit(audio_file, settings.audio_max_upload_bytes)
 
-    # /**** Executa a transcricao em threadpool (SDK OpenAI sincrono). ****/
+    # Executa a transcricao em threadpool (SDK OpenAI sincrono).
     return await run_in_threadpool(
         service.transcrever_audio,
         audio_bytes=audio_bytes,

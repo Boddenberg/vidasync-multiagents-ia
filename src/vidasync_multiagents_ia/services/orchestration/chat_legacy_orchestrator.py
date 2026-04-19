@@ -24,7 +24,7 @@ from vidasync_multiagents_ia.services.orchestration.chat_orchestrator import (
 
 
 class LegacyChatOrchestrator(AiOrchestrator):
-    # /**** Orquestracao sequencial legada para fallback da engine de chat. ****/
+    # Orquestracao sequencial legada para fallback da engine de chat.
     def __init__(
         self,
         *,
@@ -131,7 +131,7 @@ class LegacyChatOrchestrator(AiOrchestrator):
             memoria=memoria_estado,
         )
 
-    # /**** Compatibilidade retroativa com chamadas antigas enquanto migramos consumidores. ****/
+    # Compatibilidade retroativa com chamadas antigas enquanto migramos consumidores.
     def execute_chat(self, *, request: AiOrchestratorRequest) -> AiOrchestratorResponse:
         return self.orchestrate_chat(request=request)
 

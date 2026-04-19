@@ -20,7 +20,7 @@ async def pipeline_plano_e2e_temporario(
     service: PlanoPipelineE2ETesteService = Depends(get_plano_pipeline_e2e_teste_service),
     settings: Settings = Depends(get_settings),
 ) -> PlanoPipelineE2ETesteResponse:
-    # /**** Endpoint TEMPORARIO: teste ponta a ponta com outputs intermediarios e tempos. ****/
+    # Endpoint TEMPORARIO: teste ponta a ponta com outputs intermediarios e tempos.
     content_type = (request.headers.get("content-type") or "").lower()
 
     if "application/json" in content_type:

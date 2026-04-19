@@ -208,7 +208,7 @@ class PlanoTextoNormalizadoService:
             self._logger.exception("Falha ao normalizar imagem '%s'", imagem_url)
             raise ServiceError("Falha ao normalizar texto da imagem.", status_code=502) from exc
         except ValueError:
-            # /**** Fallback: se o modelo nao retornar JSON valido, usa texto semantico bruto. ****/
+            # Fallback: se o modelo nao retornar JSON valido, usa texto semantico bruto.
             texto_fallback = self._client.extract_text_from_image(
                 model=self._settings.openai_model,
                 system_prompt=(
@@ -253,7 +253,7 @@ class PlanoTextoNormalizadoService:
             self._logger.exception("Falha ao normalizar PDF '%s'", nome_arquivo)
             raise ServiceError("Falha ao normalizar texto do PDF.", status_code=502) from exc
         except ValueError:
-            # /**** Fallback: se vier resposta invalida em JSON, usa texto semantico bruto. ****/
+            # Fallback: se vier resposta invalida em JSON, usa texto semantico bruto.
             texto_fallback = self._client.extract_text_from_pdf(
                 model=self._settings.openai_model,
                 system_prompt=(
@@ -296,7 +296,7 @@ class PlanoTextoNormalizadoService:
             self._logger.exception("Falha ao normalizar texto OCR.")
             raise ServiceError("Falha ao normalizar texto OCR.", status_code=502) from exc
         except ValueError:
-            # /**** Fallback deterministico para texto OCR quando o modelo nao retorna JSON valido. ****/
+            # Fallback deterministico para texto OCR quando o modelo nao retorna JSON valido.
             secoes = _fallback_sections_from_raw_text(texto_fonte)
             texto_normalizado = _sections_to_text(secoes) if secoes else texto_fonte.strip()
             return {
@@ -571,7 +571,7 @@ def _normalize_section_content(lines: list[str]) -> str:
 
 
 def _parse_qtd_alimento_line(line: str) -> tuple[str, str] | None:
-    # /**** Detecta linhas OCR no formato tabela: quantidade + alimento na mesma linha. ****/
+    # Detecta linhas OCR no formato tabela: quantidade + alimento na mesma linha.
     if "|" in line:
         match = re.match(r"(?is)^qtd:\s*(.+?)\s*\|\s*alimento:\s*(.+)$", line.strip())
         if match:

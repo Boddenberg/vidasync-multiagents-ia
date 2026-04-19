@@ -723,7 +723,7 @@ def _is_timeout_exception(exc: Exception) -> bool:
 
 
 def _decode_base64_file(*, encoded: str, file_kind: str, max_bytes: int) -> bytes:
-    # /**** Aceita base64 puro ou data URI (data:...;base64,<conteudo>). ****/
+    # Aceita base64 puro ou data URI (data:...;base64,<conteudo>).
     raw = encoded.strip()
     if ";base64," in raw:
         raw = raw.split(",", 1)[1]

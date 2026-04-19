@@ -209,7 +209,7 @@ def _exclude_none_from_json_response_body(*, response: Response, body: bytes | N
     if compacted == parsed:
         return body
 
-    # /**** Reescreve o body JSON removendo campos nulos de forma global. ****/
+    # Reescreve o body JSON removendo campos nulos de forma global.
     compacted_body = json.dumps(compacted, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if hasattr(response, "body"):
         response.body = compacted_body
@@ -350,7 +350,7 @@ def _parse_int(value: str | None) -> int | None:
 def _sanitize_text(value: str) -> str:
     sanitized = value
 
-    # /**** Mascara chaves sensiveis comuns em payload JSON/texto. ****/
+    # Mascara chaves sensiveis comuns em payload JSON/texto.
     for key in _SENSITIVE_KEYS:
         sanitized = _mask_key_value(sanitized, key)
 

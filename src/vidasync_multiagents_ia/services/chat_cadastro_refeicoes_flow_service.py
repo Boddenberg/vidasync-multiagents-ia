@@ -184,7 +184,7 @@ def build_cadastro_refeicoes_tool_runner(
     *,
     tool_executor: Callable[[ChatToolExecutionInput], ChatToolExecutionOutput],
 ) -> Callable[[str, str], ChatToolExecutionOutput]:
-    # /**** Adapter para reaproveitar a tool de cadastro existente como fallback de fluxo. ****/
+    # Adapter para reaproveitar a tool de cadastro existente como fallback de fluxo.
     def _runner(prompt: str, idioma: str) -> ChatToolExecutionOutput:
         intencao = IntencaoChatDetectada(
             intencao="cadastrar_pratos",
@@ -431,7 +431,7 @@ def _normalize_cadastro_payload(payload: dict[str, Any], original_prompt: str, s
         items.append(normalized_item)
 
     if not items:
-        # /**** Garante consistencia minima mesmo quando extracao falha parcialmente. ****/
+        # Garante consistencia minima mesmo quando extracao falha parcialmente.
         items = [_parse_item_piece(part) for part in _split_candidate_items(original_prompt)]
         items = [item for item in items if item is not None]
 

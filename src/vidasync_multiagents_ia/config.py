@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _normalize_env_values(cls, data: object) -> object:
-        # /**** Permite env vars com ou sem aspas (ex.: "true", "60", "valor"). ****/
+        # Permite env vars com ou sem aspas (ex.: "true", "60", "valor").
         if not isinstance(data, dict):
             return data
         return {key: _strip_wrapping_quotes(value) for key, value in data.items()}

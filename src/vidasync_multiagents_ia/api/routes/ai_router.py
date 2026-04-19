@@ -12,6 +12,6 @@ def route_ai_context(
     payload: AIRouterRequest,
     service: AIRouterService = Depends(get_ai_router_service),
 ) -> AIRouterResponse:
-    # /**** Gateway interno para roteamento por contexto na camada de agentes. ****/
+    # Gateway interno para roteamento por contexto na camada de agentes.
     return service.route(payload)
 

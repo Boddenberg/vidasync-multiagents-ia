@@ -16,6 +16,6 @@ class PlanoPipelineExecutionInput:
 
 
 class AiOrchestrator(Protocol):
-    # /**** Interface estavel para trocar engine de orquestracao sem quebrar API. ****/
+    # Interface estavel para trocar engine de orquestracao sem quebrar API.
     def execute_plano_pipeline(self, *, request: PlanoPipelineExecutionInput) -> PlanoPipelineE2ETesteResponse:
         ...

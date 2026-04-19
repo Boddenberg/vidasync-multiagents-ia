@@ -84,7 +84,7 @@ def build_text_embedder(settings: Settings) -> TextEmbedder:
             )
         return HashTextEmbedder()
 
-    # /**** Modo auto: tenta OpenAI quando chave existe e cai para hash em ambiente local/offline. ****/
+    # Modo auto: tenta OpenAI quando chave existe e cai para hash em ambiente local/offline.
     if settings.openai_api_key.strip():
         try:
             return OpenAITextEmbedder(

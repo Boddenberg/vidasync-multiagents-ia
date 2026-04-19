@@ -40,7 +40,7 @@ class FotoAlimentosService:
         contexto: str = "identificar_fotos",
         idioma: str = "pt-BR",
     ) -> IdentificacaoFotoResponse:
-        # /**** Agente 1: valida se a imagem e de refeicao e se possui qualidade minima. ****/
+        # Agente 1: valida se a imagem e de refeicao e se possui qualidade minima.
         self._ensure_openai_api_key()
         imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
         self._logger.info(
@@ -91,7 +91,7 @@ class FotoAlimentosService:
         contexto: str = "estimar_porcoes_do_prato",
         idioma: str = "pt-BR",
     ) -> EstimativaPorcoesFotoResponse:
-        # /**** Agente 2: estima porcoes e gramas por item visualizado na imagem. ****/
+        # Agente 2: estima porcoes e gramas por item visualizado na imagem.
         self._ensure_openai_api_key()
         imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
         self._logger.info(
@@ -142,7 +142,7 @@ class FotoAlimentosService:
         contexto: str = "identificar_nome_prato_foto",
         idioma: str = "pt-BR",
     ) -> NomePratoFotoResponse:
-        # /**** Agente 3: identifica o nome geral da refeicao (ex.: poke, yakisoba, feijoada). ****/
+        # Agente 3: identifica o nome geral da refeicao (ex.: poke, yakisoba, feijoada).
         self._ensure_openai_api_key()
         imagem_url_resolvida = self._resolve_imagem_url(imagem_url)
         self._logger.info(

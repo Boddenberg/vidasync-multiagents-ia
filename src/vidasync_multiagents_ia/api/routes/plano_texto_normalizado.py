@@ -36,7 +36,7 @@ async def normalizar_texto_plano_de_pdf(
     nome_arquivo = (pdf_file.filename or "").strip() or "documento.pdf"
     _validate_pdf_upload_meta(pdf_file=pdf_file, nome_arquivo=nome_arquivo)
 
-    # /**** Leitura com limite para proteger memoria e evitar payload acima do previsto. ****/
+    # Leitura com limite para proteger memoria e evitar payload acima do previsto.
     pdf_bytes = await _read_upload_with_limit(pdf_file, settings.pdf_max_upload_bytes)
 
     return await run_in_threadpool(

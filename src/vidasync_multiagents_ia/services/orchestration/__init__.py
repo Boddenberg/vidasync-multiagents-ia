@@ -36,7 +36,7 @@ def build_chat_orchestrator(
     router_service: "ChatConversacionalRouterService",
     memory_service: "ChatMemoryService",
 ) -> ChatAiOrchestrator:
-    # /**** Import lazy para evitar ciclo com router durante bootstrap dos servicos. ****/
+    # Import lazy para evitar ciclo com router durante bootstrap dos servicos.
     from vidasync_multiagents_ia.services.orchestration.chat_factory import (
         build_chat_orchestrator as _build_chat_orchestrator,
     )
@@ -78,7 +78,7 @@ def build_plano_pipeline_orchestrator(
     normalizacao_service: "PlanoTextoNormalizadoService",
     plano_service: "PlanoAlimentarService",
 ) -> AiOrchestrator:
-    # /**** Import lazy para manter __init__ leve e sem acoplamento com os factories concretos. ****/
+    # Import lazy para manter __init__ leve e sem acoplamento com os factories concretos.
     from vidasync_multiagents_ia.services.orchestration.factory import (
         build_plano_pipeline_orchestrator as _build_plano_pipeline_orchestrator,
     )

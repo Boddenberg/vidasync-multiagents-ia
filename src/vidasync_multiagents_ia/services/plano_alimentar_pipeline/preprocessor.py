@@ -96,7 +96,7 @@ class PlanoAlimentarPreprocessor:
         for linha in linhas:
             nome_detectado = _detect_refeicao_heading(linha)
             if nome_detectado:
-                # /**** Suporta lista de titulos consecutivos (ex.: Cafe/Lanche/Ceia) antes das opcoes. ****/
+                # Suporta lista de titulos consecutivos (ex.: Cafe/Lanche/Ceia) antes das opcoes.
                 if secoes_pendentes and secoes_pendentes_com_conteudo:
                     secoes_pendentes = [nome_detectado]
                     secoes_pendentes_com_conteudo = False

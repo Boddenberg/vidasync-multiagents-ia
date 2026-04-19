@@ -21,10 +21,10 @@ async def transcrever_pdf(
     nome_arquivo = (pdf_file.filename or "").strip() or "documento.pdf"
     _validate_pdf_upload_meta(pdf_file=pdf_file, nome_arquivo=nome_arquivo)
 
-    # /**** Leitura com limite para proteger memoria e evitar payload acima do previsto. ****/
+    # Leitura com limite para proteger memoria e evitar payload acima do previsto.
     pdf_bytes = await _read_upload_with_limit(pdf_file, settings.pdf_max_upload_bytes)
 
-    # /**** Executa OCR/transcricao em threadpool porque o cliente OpenAI e sincrono. ****/
+    # Executa OCR/transcricao em threadpool porque o cliente OpenAI e sincrono.
     return await run_in_threadpool(
         service.transcrever_pdf,
         pdf_bytes=pdf_bytes,

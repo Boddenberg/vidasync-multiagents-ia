@@ -497,14 +497,12 @@ class CaloriasTextoService:
     ) -> list[_StructuredFoodLookup]:
         if not requests:
             return []
-        # /****
-        #  * Mantem a ordem do lote deterministica por item.
-        #  *
-        #  * Cada item ainda consulta as fontes estruturadas em paralelo
-        #  * (_consultar_fontes_em_paralelo), mas o lote em si segue a ordem
-        #  * recebida. Isso evita flakiness em testes, logs e efeitos
-        #  * colaterais observaveis de clients fakes/instrumentados.
-        #  ****/
+        # Mantem a ordem do lote deterministica por item.
+        #
+        # Cada item ainda consulta as fontes estruturadas em paralelo
+        # (_consultar_fontes_em_paralelo), mas o lote em si segue a ordem
+        # recebida. Isso evita flakiness em testes, logs e efeitos
+        # colaterais observaveis de clients fakes/instrumentados.
         return [
             self._coletar_lookup_estruturado(index=index, request=request)
             for index, request in enumerate(requests)
@@ -945,7 +943,7 @@ class CaloriasTextoService:
                 lipidios_g=_to_optional_float(raw_totals.get("lipidios_g") or raw_totals.get("fat_g")),
             )
 
-        # /**** Fallback deterministico para totals quando o LLM nao retornar o bloco esperado. ****/
+        # Fallback deterministico para totals quando o LLM nao retornar o bloco esperado.
         return TotaisCaloriasTexto(
             calorias_kcal=_sum_values([item.calorias_kcal for item in itens]),
             proteina_g=_sum_values([item.proteina_g for item in itens]),

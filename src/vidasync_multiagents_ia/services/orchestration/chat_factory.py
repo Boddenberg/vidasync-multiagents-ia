@@ -22,7 +22,7 @@ def build_chat_orchestrator(
     router_service: ChatConversacionalRouterService,
     memory_service: ChatMemoryService,
 ) -> AiOrchestrator:
-    # /**** Builder legado mantido por compatibilidade; prefere-se build_chat_ai_orchestrator. ****/
+    # Builder legado mantido por compatibilidade; prefere-se build_chat_ai_orchestrator.
     return _build_engine_orchestrator(
         settings=settings,
         intencao_service=intencao_service,
@@ -39,10 +39,8 @@ def build_chat_ai_orchestrator(
     router_service: ChatConversacionalRouterService | None = None,
     memory_service: ChatMemoryService | None = None,
 ) -> AiOrchestrator:
-    # /****
-    #  * Builder publico estavel para consumidores externos.
-    #  * Esconde wiring interno (router, memoria, engine) da camada consumidora.
-    #  ****/
+    # Builder publico estavel para consumidores externos.
+    # Esconde wiring interno (router, memoria, engine) da camada consumidora.
     resolved_intencao = intencao_service or ChatIntencaoService()
     resolved_memory = memory_service or ChatMemoryService(settings=settings)
     resolved_router = router_service or ChatConversacionalRouterService(

@@ -23,7 +23,7 @@ _TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3]):[0-5]\d\b")
 
 
 def extract_deterministic_meal_sections(texto: str) -> list[RefeicaoPlano]:
-    # /**** Converte texto normalizado em refeicoes estruturadas sem depender de LLM. ****/
+    # Converte texto normalizado em refeicoes estruturadas sem depender de LLM.
     linhas = _normalize_lines(texto)
     if not linhas:
         return []
@@ -125,7 +125,7 @@ def _parse_qtd_alimento_line(line: str) -> tuple[str, str] | None:
     if not quantidade:
         return None
     if not alimento:
-        # /**** Exige ALIMENTO explicito para reduzir ambiguidade em orientacoes. ****/
+        # Exige ALIMENTO explicito para reduzir ambiguidade em orientacoes.
         return None
     return quantidade, alimento
 

@@ -75,7 +75,7 @@ class _JsonLogFormatter(logging.Formatter):
         super().__init__()
         self._pretty = pretty
 
-    # /**** Formata logs em JSON para facilitar busca, filtros e troubleshooting. ****/
+    # Formata logs em JSON para facilitar busca, filtros e troubleshooting.
     def format(self, record: logging.LogRecord) -> str:
         extras = _extract_extra_fields(record)
         message, extras = _normalize_message_and_extras(
@@ -104,7 +104,7 @@ class _JsonLogFormatter(logging.Formatter):
 
 
 class _TextLogFormatter(logging.Formatter):
-    # /**** Formato texto para debug local rapido em terminal. ****/
+    # Formato texto para debug local rapido em terminal.
     def format(self, record: logging.LogRecord) -> str:
         extras = _extract_extra_fields(record)
         message, extras = _normalize_message_and_extras(
@@ -144,14 +144,14 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", json_pretty: bool =
     root.setLevel(log_level)
     root.addHandler(handler)
 
-    # /**** Uvicorn/FastAPI passam a respeitar o mesmo formato de log da aplicacao. ****/
+    # Uvicorn/FastAPI passam a respeitar o mesmo formato de log da aplicacao.
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
         logger = logging.getLogger(logger_name)
         logger.handlers.clear()
         logger.propagate = True
         logger.setLevel(log_level)
 
-    # /**** Evita ruido de baixo nivel do cliente HTTP; logs externos ja sao emitidos pela app. ****/
+    # Evita ruido de baixo nivel do cliente HTTP; logs externos ja sao emitidos pela app.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 

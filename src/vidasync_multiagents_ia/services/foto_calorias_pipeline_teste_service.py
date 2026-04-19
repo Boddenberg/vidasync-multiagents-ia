@@ -23,7 +23,7 @@ from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimento
 
 
 class FotoCaloriasPipelineTesteService:
-    # /**** Endpoint temporario de debug local: imagem -> porcoes -> calorias em cadeia unica. ****/
+    # Endpoint temporario de debug local: imagem -> porcoes -> calorias em cadeia unica.
     def __init__(
         self,
         *,

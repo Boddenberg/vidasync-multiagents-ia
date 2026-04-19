@@ -26,7 +26,7 @@ from vidasync_multiagents_ia.services.orchestration.ai_orchestrator import (
 
 
 class LegacyPlanoPipelineOrchestrator(AiOrchestrator):
-    # /**** Engine sequencial (legado): preserva o comportamento atual sem LangGraph. ****/
+    # Engine sequencial (legado): preserva o comportamento atual sem LangGraph.
     def __init__(
         self,
         *,

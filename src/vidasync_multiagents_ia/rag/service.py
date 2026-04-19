@@ -14,7 +14,7 @@ from vidasync_multiagents_ia.rag.vector_index import InMemoryVectorIndex
 
 
 class NutritionRagService:
-    # /**** Orquestra ingestao e retrieval de RAG sem acoplar com endpoint ou LangGraph. ****/
+    # Orquestra ingestao e retrieval de RAG sem acoplar com endpoint ou LangGraph.
     def __init__(
         self,
         *,

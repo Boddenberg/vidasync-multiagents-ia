@@ -15,7 +15,7 @@ def resolve_image_reference_to_public_url(
 
     lowered = raw.lower()
     if lowered.startswith("http://") or lowered.startswith("https://"):
-        # /**** Preserva URLs assinadas/autenticadas para nao perder token de acesso. ****/
+        # Preserva URLs assinadas/autenticadas para nao perder token de acesso.
         return raw
 
     bucket_value = (public_bucket or "").strip().strip("/")
@@ -33,7 +33,7 @@ def resolve_image_reference_to_public_url(
     if key.startswith(f"{bucket_value}/"):
         key = key[len(bucket_value) + 1 :]
 
-    # /**** Normaliza barras para evitar URLs invalidas com '//' internos no path. ****/
+    # Normaliza barras para evitar URLs invalidas com '//' internos no path.
     key = re.sub(r"/{2,}", "/", key).strip("/")
     if not key:
         raise ServiceError("Referencia de imagem invalida.", status_code=400)

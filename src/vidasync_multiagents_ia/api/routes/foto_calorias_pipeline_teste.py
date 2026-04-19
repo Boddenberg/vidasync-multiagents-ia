@@ -15,7 +15,7 @@ def pipeline_foto_calorias(
     payload: FotoCaloriasPipelineTesteRequest,
     service: FotoCaloriasPipelineTesteService = Depends(get_foto_calorias_pipeline_teste_service),
 ) -> FotoCaloriasPipelineTesteResponse:
-    # /**** Endpoint temporario para teste local de imagem->porcoes->calorias. ****/
+    # Endpoint temporario para teste local de imagem->porcoes->calorias.
     return service.executar_pipeline(
         imagem_url=payload.imagem_url,
         contexto=payload.contexto,
