@@ -1,5 +1,6 @@
 import base64
 import logging
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -683,7 +684,8 @@ def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        normalized = value.strip().lower()
+        normalized = unicodedata.normalize("NFKD", value.strip().lower())
+        normalized = normalized.encode("ascii", "ignore").decode("ascii")
         if normalized in {"true", "1", "sim", "yes"}:
             return True
         if normalized in {"false", "0", "nao", "nÃ£o", "no"}:

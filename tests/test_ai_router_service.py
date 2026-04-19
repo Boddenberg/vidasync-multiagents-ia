@@ -643,7 +643,7 @@ def test_ai_router_service_repassa_parametros_de_memoria_no_chat() -> None:
             payload={
                 "prompt": "oi",
                 "conversation_id": "conv-xyz",
-                "usar_memoria": False,
+                "usar_memoria": "não",
                 "metadados_conversa": {"canal": "mobile"},
             },
         )

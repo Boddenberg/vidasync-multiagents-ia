@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -210,7 +211,7 @@ def _normalize_profile(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
-    lower = prompt.lower()
+    lower = _normalize_match_text(prompt)
     restricoes: list[str] = []
     for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar", "sem aÃ§Ãºcar"):
         if termo in lower:
@@ -235,6 +236,12 @@ def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
         "tempo_max_preparo_min": tempo,
         "observacoes_usuario": None,
     }
+
+
+def _normalize_match_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.lower())
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", ascii_text).strip()
 
 
 def _build_rag_query(*, prompt: str, profile: dict[str, Any]) -> str:
