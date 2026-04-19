@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     plano_pipeline_orchestrator_engine: str = "langgraph"
     chat_orchestrator_engine: str = "langgraph"
     debug_local_routes_enabled: bool = True
+    external_http_cache_ttl_seconds: float = 300.0
+    external_http_cache_max_entries: int = 256
 
     @model_validator(mode="before")
     @classmethod

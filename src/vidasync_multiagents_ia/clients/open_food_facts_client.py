@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from vidasync_multiagents_ia.core.cache import TTLCache
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 
@@ -25,11 +26,17 @@ class OpenFoodFactsClient:
         *,
         log_payloads: bool = True,
         log_max_chars: int = 4000,
+        cache_ttl_seconds: float = 0.0,
+        cache_max_entries: int = 256,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
         self._log_payloads = log_payloads
         self._log_max_chars = max(256, log_max_chars)
+        self._cache: TTLCache[str, dict] = TTLCache(
+            ttl_seconds=cache_ttl_seconds,
+            max_entries=cache_max_entries,
+        )
 
     def search_products(
         self,
@@ -48,6 +55,15 @@ class OpenFoodFactsClient:
             "fields": "code,product_name,brands,image_url,nutriments",
         }
         url = f"{OPEN_FOOD_FACTS_BASE_URL}{OPEN_FOOD_FACTS_SEARCH_PATH}?{urlencode(params)}"
+        cached = self._cache.get(url)
+        if cached is not None:
+            record_external_request(
+                client="open_food_facts",
+                operation="search_products",
+                status="cache_hit",
+                duration_ms=0.0,
+            )
+            return cached
         started = perf_counter()
         self._logger.info(
             "open_food_facts.http.request",
@@ -91,9 +107,11 @@ class OpenFoodFactsClient:
                     duration_ms=duration_ms,
                 )
                 try:
-                    return json.loads(raw)
+                    payload = json.loads(raw)
                 except json.JSONDecodeError as exc:
                     raise OpenFoodFactsClientError("Resposta invalida do Open Food Facts.", status_code=502) from exc
+                self._cache.set(url, payload)
+                return payload
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
             self._logger.warning(

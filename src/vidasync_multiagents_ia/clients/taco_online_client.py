@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core import normalize_pt_text
+from vidasync_multiagents_ia.core.cache import TTLCache
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TacoOnlineFoodIndexItem, TacoOnlineRawFoodData
@@ -30,14 +31,29 @@ class TacoOnlineClient:
         *,
         log_payloads: bool = True,
         log_max_chars: int = 4000,
+        cache_ttl_seconds: float = 0.0,
+        cache_max_entries: int = 256,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
         self._cached_index: list[TacoOnlineFoodIndexItem] | None = None
         self._log_payloads = log_payloads
         self._log_max_chars = max(256, log_max_chars)
+        self._http_cache: TTLCache[str, str] = TTLCache(
+            ttl_seconds=cache_ttl_seconds,
+            max_entries=cache_max_entries,
+        )
 
     def fetch_html(self, page_url: str) -> str:
+        cached = self._http_cache.get(page_url)
+        if cached is not None:
+            record_external_request(
+                client="taco_online",
+                operation="fetch_html",
+                status="cache_hit",
+                duration_ms=0.0,
+            )
+            return cached
         started = perf_counter()
         self._logger.info(
             "taco_online.http.request",
@@ -83,6 +99,7 @@ class TacoOnlineClient:
                     status=str(getattr(response, "status", 200)),
                     duration_ms=duration_ms,
                 )
+                self._http_cache.set(page_url, decoded)
                 return decoded
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0

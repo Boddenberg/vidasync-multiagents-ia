@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
+from vidasync_multiagents_ia.core.cache import TTLCache
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TBCAFoodCandidate, TBCANutrientRow
@@ -178,6 +179,8 @@ class TBCAClient:
         *,
         log_payloads: bool = True,
         log_max_chars: int = 4000,
+        cache_ttl_seconds: float = 0.0,
+        cache_max_entries: int = 256,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -185,6 +188,10 @@ class TBCAClient:
         self._search_url = urljoin(self._base_url, TBCA_SEARCH_PATH)
         self._log_payloads = log_payloads
         self._log_max_chars = max(256, log_max_chars)
+        self._cache: TTLCache[str, str] = TTLCache(
+            ttl_seconds=cache_ttl_seconds,
+            max_entries=cache_max_entries,
+        )
 
     def search_foods(self, query: str) -> list[TBCAFoodCandidate]:
         search_url = f"{self._search_url}?{urlencode({'produto': query})}"
@@ -210,6 +217,15 @@ class TBCAClient:
         return urljoin(self._base_url, detail_path.lstrip("/"))
 
     def _request_html(self, url: str) -> str:
+        cached = self._cache.get(url)
+        if cached is not None:
+            record_external_request(
+                client="tbca",
+                operation="request_html",
+                status="cache_hit",
+                duration_ms=0.0,
+            )
+            return cached
         started = perf_counter()
         self._logger.info(
             "tbca.http.request",
@@ -255,6 +271,7 @@ class TBCAClient:
                     status=str(getattr(response, "status", 200)),
                     duration_ms=duration_ms,
                 )
+                self._cache.set(url, decoded)
                 return decoded
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0

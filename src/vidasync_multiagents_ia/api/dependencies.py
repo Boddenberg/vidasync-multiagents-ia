@@ -90,6 +90,8 @@ def get_tbca_service() -> TBCAService:
         client=TBCAClient(
             log_payloads=settings.log_external_payloads,
             log_max_chars=settings.log_external_max_body_chars,
+            cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
+            cache_max_entries=settings.external_http_cache_max_entries,
         )
     )
 
@@ -101,6 +103,8 @@ def get_taco_online_service() -> TacoOnlineService:
         client=TacoOnlineClient(
             log_payloads=settings.log_external_payloads,
             log_max_chars=settings.log_external_max_body_chars,
+            cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
+            cache_max_entries=settings.external_http_cache_max_entries,
         )
     )
 
@@ -112,6 +116,8 @@ def get_open_food_facts_service() -> OpenFoodFactsService:
         client=OpenFoodFactsClient(
             log_payloads=settings.log_external_payloads,
             log_max_chars=settings.log_external_max_body_chars,
+            cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
+            cache_max_entries=settings.external_http_cache_max_entries,
         )
     )
 
