@@ -147,4 +147,10 @@ def get_ai_router_service() -> AIRouterService:
         audio_transcricao_service=get_audio_transcricao_service(),
         pdf_texto_service=get_pdf_texto_service(),
         calorias_texto_service=get_calorias_texto_service(),
+        tbca_service=get_tbca_service(),
+        taco_online_service=get_taco_online_service(),
+        imagem_texto_service=get_imagem_texto_service(),
+        plano_texto_normalizado_service=get_plano_texto_normalizado_service(),
+        plano_alimentar_service=get_plano_alimentar_service(),
+        frase_porcoes_service=get_frase_porcoes_service(),
     )

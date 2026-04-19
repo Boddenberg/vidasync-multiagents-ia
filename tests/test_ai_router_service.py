@@ -6,19 +6,41 @@ from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import (
     AIRouterRequest,
     AgenteCaloriasTexto,
+    AgenteEstruturacaoPlano,
+    AgenteNormalizacaoPlanoTexto,
+    AgentePorcoesTexto,
     AgenteTranscricaoAudio,
+    AgenteTranscricaoImagemTexto,
     AgenteTranscricaoPdf,
     AudioTranscricaoResponse,
     CaloriasTextoResponse,
+    DiagnosticoPlano,
     EstimativaPorcoesFotoResponse,
     ExecucaoAgenteFoto,
+    FrasePorcoesResponse,
     IdentificacaoFotoResponse,
+    ImagemTextoItemResponse,
+    ImagemTextoResponse,
     ItemAlimentoEstimado,
     ItemCaloriasTexto,
+    ItemAlimentarPlano,
+    ItemPorcaoTexto,
+    OpcaoRefeicaoPlano,
     OpenAIChatResponse,
     PdfTextoResponse,
+    PlanoAlimentarEstruturado,
+    PlanoAlimentarResponse,
+    PlanoTextoNormalizadoResponse,
+    PlanoTextoNormalizadoSecao,
+    RefeicaoPlano,
     ResultadoIdentificacaoFoto,
+    ResultadoPorcoesTexto,
     ResultadoPorcoesFoto,
+    TBCAFoodSelection,
+    TBCAMacros,
+    TBCASearchResponse,
+    TacoOnlineFoodResponse,
+    TacoOnlineNutrients,
     TotaisCaloriasTexto,
 )
 from vidasync_multiagents_ia.services.ai_router_service import AIRouterService
@@ -201,7 +223,254 @@ class _FakeCaloriasTextoService:
         )
 
 
-def _build_service() -> AIRouterService:
+class _FakeTBCAService:
+    def search(self, query: str, grams: float = 100.0) -> TBCASearchResponse:
+        assert query == "arroz"
+        assert grams == 150.0
+        return TBCASearchResponse(
+            consulta=query,
+            gramas=grams,
+            alimento_selecionado=TBCAFoodSelection(
+                codigo="123",
+                nome="Arroz branco cozido",
+                url_detalhe="https://example.com/tbca/arroz",
+            ),
+            por_100g=TBCAMacros(
+                energia_kcal=128.0,
+                proteina_g=2.5,
+                carboidratos_g=28.1,
+                lipidios_g=0.2,
+            ),
+            ajustado=TBCAMacros(
+                energia_kcal=192.0,
+                proteina_g=3.75,
+                carboidratos_g=42.15,
+                lipidios_g=0.3,
+            ),
+        )
+
+
+class _FakeTacoOnlineService:
+    def get_food(
+        self,
+        *,
+        slug: str | None = None,
+        page_url: str | None = None,
+        query: str | None = None,
+        grams: float = 100.0,
+    ) -> TacoOnlineFoodResponse:
+        assert slug is None
+        assert page_url is None
+        assert query == "feijao carioca cru"
+        assert grams == 100.0
+        return TacoOnlineFoodResponse(
+            url_pagina="https://example.com/taco/feijao-carioca-cru",
+            slug="feijao-carioca-cru",
+            gramas=grams,
+            nome_alimento="Feijao carioca cru",
+            grupo_alimentar="Leguminosas",
+            base_calculo="100 gramas",
+            por_100g=TacoOnlineNutrients(
+                energia_kcal=329.0,
+                carboidratos_g=61.2,
+                proteina_g=20.0,
+                lipidios_g=1.3,
+            ),
+            ajustado=TacoOnlineNutrients(
+                energia_kcal=329.0,
+                carboidratos_g=61.2,
+                proteina_g=20.0,
+                lipidios_g=1.3,
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
+class _FakeImagemTextoService:
+    def transcrever_textos_de_imagens(
+        self,
+        *,
+        imagem_urls: list[str],
+        contexto: str = "transcrever_texto_imagem",
+        idioma: str = "pt-BR",
+    ) -> ImagemTextoResponse:
+        assert imagem_urls == ["https://example.com/cardapio.png"]
+        return ImagemTextoResponse(
+            contexto=contexto,
+            idioma=idioma,
+            total_imagens=1,
+            resultados=[
+                ImagemTextoItemResponse(
+                    imagem_url=imagem_urls[0],
+                    status="sucesso",
+                    texto_transcrito="Cafe da manha: 1 banana",
+                )
+            ],
+            agente=AgenteTranscricaoImagemTexto(
+                contexto=contexto,
+                nome_agente="agente_ocr_imagem_texto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                modo_execucao="paralelo",
+                total_imagens=1,
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
+class _FakePlanoTextoNormalizadoService:
+    def normalizar_de_textos(
+        self,
+        *,
+        textos_fonte: list[str],
+        contexto: str = "normalizar_texto_plano_alimentar",
+        idioma: str = "pt-BR",
+    ) -> PlanoTextoNormalizadoResponse:
+        assert textos_fonte == ["Cafe da manha: 1 banana"]
+        return PlanoTextoNormalizadoResponse(
+            contexto=contexto,
+            idioma=idioma,
+            tipo_fonte="texto_ocr",
+            total_fontes=1,
+            titulo_documento=None,
+            secoes=[
+                PlanoTextoNormalizadoSecao(
+                    titulo="desjejum",
+                    texto="QTD: 1 unidade | ALIMENTO: banana",
+                )
+            ],
+            texto_normalizado="[desjejum]\nQTD: 1 unidade | ALIMENTO: banana",
+            observacoes=[],
+            agente=AgenteNormalizacaoPlanoTexto(
+                contexto=contexto,
+                nome_agente="agente_normalizacao_plano_texto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                tipo_fonte="texto_ocr",
+                total_fontes=1,
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+    def normalizar_de_imagens(
+        self,
+        *,
+        imagem_urls: list[str],
+        contexto: str = "normalizar_texto_plano_alimentar",
+        idioma: str = "pt-BR",
+    ) -> PlanoTextoNormalizadoResponse:
+        assert imagem_urls
+        return self.normalizar_de_textos(
+            textos_fonte=["Cafe da manha: 1 banana"],
+            contexto=contexto,
+            idioma=idioma,
+        )
+
+    def normalizar_de_pdf(
+        self,
+        *,
+        pdf_bytes: bytes,
+        nome_arquivo: str,
+        contexto: str = "normalizar_texto_plano_alimentar",
+        idioma: str = "pt-BR",
+    ) -> PlanoTextoNormalizadoResponse:
+        assert pdf_bytes
+        assert nome_arquivo.endswith(".pdf")
+        return self.normalizar_de_textos(
+            textos_fonte=["Cafe da manha: 1 banana"],
+            contexto=contexto,
+            idioma=idioma,
+        )
+
+
+class _FakePlanoAlimentarService:
+    def estruturar_plano(
+        self,
+        *,
+        textos_fonte: list[str],
+        contexto: str = "estruturar_plano_alimentar",
+        idioma: str = "pt-BR",
+    ) -> PlanoAlimentarResponse:
+        assert textos_fonte == ["Cafe da manha: 1 banana"]
+        return PlanoAlimentarResponse(
+            contexto=contexto,
+            idioma=idioma,
+            fontes_processadas=1,
+            plano_alimentar=PlanoAlimentarEstruturado(
+                objetivos=["melhora de energia"],
+                plano_refeicoes=[
+                    RefeicaoPlano(
+                        nome_refeicao="desjejum",
+                        opcoes=[
+                            OpcaoRefeicaoPlano(
+                                titulo="opcao_1",
+                                itens=[
+                                    ItemAlimentarPlano(
+                                        alimento="banana",
+                                        quantidade_texto="1 unidade",
+                                        quantidade_gramas=80.0,
+                                    )
+                                ],
+                            )
+                        ],
+                    )
+                ],
+                avisos_extracao=[],
+            ),
+            agente=AgenteEstruturacaoPlano(
+                contexto=contexto,
+                nome_agente="agente_estrutura_plano_alimentar",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                fontes_processadas=1,
+            ),
+            diagnostico=DiagnosticoPlano(
+                pipeline="hibrido_llm_regras",
+                secoes_detectadas=["desjejum"],
+                warnings=[],
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
+class _FakeFrasePorcoesService:
+    def extrair_porcoes(
+        self,
+        *,
+        texto_transcrito: str,
+        contexto: str = "interpretar_porcoes_texto",
+        idioma: str = "pt-BR",
+        inferir_quando_ausente: bool = False,
+    ) -> FrasePorcoesResponse:
+        assert texto_transcrito == "1 banana"
+        assert inferir_quando_ausente is True
+        return FrasePorcoesResponse(
+            contexto=contexto,
+            texto_transcrito=texto_transcrito,
+            resultado_porcoes=ResultadoPorcoesTexto(
+                itens=[
+                    ItemPorcaoTexto(
+                        nome_alimento="banana",
+                        consulta_canonica="banana prata",
+                        quantidade_original="1 banana",
+                        quantidade_gramas=80.0,
+                        confianca=0.91,
+                    )
+                ],
+                observacoes_gerais=None,
+            ),
+            agente=AgentePorcoesTexto(
+                contexto=contexto,
+                nome_agente="agente_interpretacao_porcoes_texto",
+                status="sucesso",
+                modelo="gpt-4o-mini",
+                confianca_media=0.91,
+            ),
+            extraido_em=datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+
+def _build_service_with_chat_service(openai_chat_service: object) -> AIRouterService:
     settings = Settings(
         openai_api_key="test-key",
         audio_max_upload_bytes=8 * 1024 * 1024,
@@ -209,12 +478,22 @@ def _build_service() -> AIRouterService:
     )
     return AIRouterService(
         settings=settings,
-        openai_chat_service=_FakeOpenAIChatService(),  # type: ignore[arg-type]
+        openai_chat_service=openai_chat_service,  # type: ignore[arg-type]
         foto_alimentos_service=_FakeFotoAlimentosService(),  # type: ignore[arg-type]
         audio_transcricao_service=_FakeAudioTranscricaoService(),  # type: ignore[arg-type]
         pdf_texto_service=_FakePdfTextoService(),  # type: ignore[arg-type]
         calorias_texto_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
+        tbca_service=_FakeTBCAService(),  # type: ignore[arg-type]
+        taco_online_service=_FakeTacoOnlineService(),  # type: ignore[arg-type]
+        imagem_texto_service=_FakeImagemTextoService(),  # type: ignore[arg-type]
+        plano_texto_normalizado_service=_FakePlanoTextoNormalizadoService(),  # type: ignore[arg-type]
+        plano_alimentar_service=_FakePlanoAlimentarService(),  # type: ignore[arg-type]
+        frase_porcoes_service=_FakeFrasePorcoesService(),  # type: ignore[arg-type]
     )
+
+
+def _build_service() -> AIRouterService:
+    return _build_service_with_chat_service(_FakeOpenAIChatService())
 
 
 def test_ai_router_service_contextos_suportados() -> None:
@@ -266,6 +545,60 @@ def test_ai_router_service_contextos_suportados() -> None:
     assert calorias.resultado is not None and calorias.resultado["totais"]["calorias_kcal"] == 89.0
 
 
+def test_ai_router_service_cobre_contextos_do_contrato_alvo() -> None:
+    service = _build_service()
+
+    tbca = service.route(
+        AIRouterRequest(
+            contexto="consultar_tbca",
+            payload={"consulta": "arroz", "gramas": 150},
+        )
+    )
+    taco = service.route(
+        AIRouterRequest(
+            contexto="consultar_taco_online",
+            payload={"consulta": "feijao carioca cru", "gramas": 100},
+        )
+    )
+    imagem = service.route(
+        AIRouterRequest(
+            contexto="transcrever_texto_imagem",
+            payload={"imagem_url": "https://example.com/cardapio.png"},
+        )
+    )
+    normalizado = service.route(
+        AIRouterRequest(
+            contexto="normalizar_texto_plano_alimentar",
+            payload={"texto_transcrito": "Cafe da manha: 1 banana"},
+        )
+    )
+    plano = service.route(
+        AIRouterRequest(
+            contexto="estruturar_plano_alimentar",
+            payload={"texto_transcrito": "Cafe da manha: 1 banana"},
+        )
+    )
+    porcoes = service.route(
+        AIRouterRequest(
+            contexto="interpretar_porcoes_texto",
+            payload={"texto_transcrito": "1 banana", "inferir_quando_ausente": True},
+        )
+    )
+
+    assert tbca.status == "sucesso"
+    assert tbca.resultado is not None and tbca.resultado["alimento_selecionado"]["nome"] == "Arroz branco cozido"
+    assert taco.status == "sucesso"
+    assert taco.resultado is not None and taco.resultado["nome_alimento"] == "Feijao carioca cru"
+    assert imagem.status == "sucesso"
+    assert imagem.resultado is not None and imagem.resultado["resultados"][0]["texto_transcrito"] == "Cafe da manha: 1 banana"
+    assert normalizado.status == "sucesso"
+    assert normalizado.resultado is not None and normalizado.resultado["tipo_fonte"] == "texto_ocr"
+    assert plano.status == "sucesso"
+    assert plano.resultado is not None and plano.resultado["plano_alimentar"]["plano_refeicoes"][0]["nome_refeicao"] == "desjejum"
+    assert porcoes.status == "sucesso"
+    assert porcoes.resultado is not None and porcoes.resultado["resultado_porcoes"]["itens"][0]["nome_alimento"] == "banana"
+
+
 def test_ai_router_service_contexto_invalido() -> None:
     service = _build_service()
     try:
@@ -302,15 +635,7 @@ def test_ai_router_service_repassa_parametros_de_memoria_no_chat() -> None:
             return OpenAIChatResponse(model="gpt-4o-mini", response="ok")
 
     capture_service = _CaptureOpenAIChatService()
-    settings = Settings(openai_api_key="test-key")
-    service = AIRouterService(
-        settings=settings,
-        openai_chat_service=capture_service,  # type: ignore[arg-type]
-        foto_alimentos_service=_FakeFotoAlimentosService(),  # type: ignore[arg-type]
-        audio_transcricao_service=_FakeAudioTranscricaoService(),  # type: ignore[arg-type]
-        pdf_texto_service=_FakePdfTextoService(),  # type: ignore[arg-type]
-        calorias_texto_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
-    )
+    service = _build_service_with_chat_service(capture_service)
 
     response = service.route(
         AIRouterRequest(
@@ -359,15 +684,7 @@ def test_ai_router_service_repassa_plano_anexo_no_chat() -> None:
             return OpenAIChatResponse(model="gpt-4o-mini", response="ok")
 
     capture_service = _CaptureOpenAIChatService()
-    settings = Settings(openai_api_key="test-key")
-    service = AIRouterService(
-        settings=settings,
-        openai_chat_service=capture_service,  # type: ignore[arg-type]
-        foto_alimentos_service=_FakeFotoAlimentosService(),  # type: ignore[arg-type]
-        audio_transcricao_service=_FakeAudioTranscricaoService(),  # type: ignore[arg-type]
-        pdf_texto_service=_FakePdfTextoService(),  # type: ignore[arg-type]
-        calorias_texto_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
-    )
+    service = _build_service_with_chat_service(capture_service)
 
     response = service.route(
         AIRouterRequest(
@@ -416,15 +733,7 @@ def test_ai_router_service_repassa_refeicao_anexo_no_chat() -> None:
             return OpenAIChatResponse(model="gpt-4o-mini", response="ok")
 
     capture_service = _CaptureOpenAIChatService()
-    settings = Settings(openai_api_key="test-key")
-    service = AIRouterService(
-        settings=settings,
-        openai_chat_service=capture_service,  # type: ignore[arg-type]
-        foto_alimentos_service=_FakeFotoAlimentosService(),  # type: ignore[arg-type]
-        audio_transcricao_service=_FakeAudioTranscricaoService(),  # type: ignore[arg-type]
-        pdf_texto_service=_FakePdfTextoService(),  # type: ignore[arg-type]
-        calorias_texto_service=_FakeCaloriasTextoService(),  # type: ignore[arg-type]
-    )
+    service = _build_service_with_chat_service(capture_service)
 
     response = service.route(
         AIRouterRequest(

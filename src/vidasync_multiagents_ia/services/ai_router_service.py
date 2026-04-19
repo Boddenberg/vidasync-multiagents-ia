@@ -15,8 +15,14 @@ from vidasync_multiagents_ia.schemas import AIRouterRequest, AIRouterResponse
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
 from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
+from vidasync_multiagents_ia.services.frase_porcoes_service import FrasePorcoesService
+from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
 from vidasync_multiagents_ia.services.openai_chat_service import OpenAIChatService
 from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
+from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
+from vidasync_multiagents_ia.services.plano_texto_normalizado_service import PlanoTextoNormalizadoService
+from vidasync_multiagents_ia.services.taco_online_service import TacoOnlineService
+from vidasync_multiagents_ia.services.tbca_service import TBCAService
 
 
 @dataclass(slots=True)
@@ -37,6 +43,12 @@ class AIRouterService:
         audio_transcricao_service: AudioTranscricaoService,
         pdf_texto_service: PdfTextoService,
         calorias_texto_service: CaloriasTextoService,
+        tbca_service: TBCAService,
+        taco_online_service: TacoOnlineService,
+        imagem_texto_service: ImagemTextoService,
+        plano_texto_normalizado_service: PlanoTextoNormalizadoService,
+        plano_alimentar_service: PlanoAlimentarService,
+        frase_porcoes_service: FrasePorcoesService,
     ) -> None:
         self._settings = settings
         self._openai_chat_service = openai_chat_service
@@ -44,6 +56,12 @@ class AIRouterService:
         self._audio_transcricao_service = audio_transcricao_service
         self._pdf_texto_service = pdf_texto_service
         self._calorias_texto_service = calorias_texto_service
+        self._tbca_service = tbca_service
+        self._taco_online_service = taco_online_service
+        self._imagem_texto_service = imagem_texto_service
+        self._plano_texto_normalizado_service = plano_texto_normalizado_service
+        self._plano_alimentar_service = plano_alimentar_service
+        self._frase_porcoes_service = frase_porcoes_service
         self._logger = logging.getLogger(__name__)
 
     def route(self, request: AIRouterRequest) -> AIRouterResponse:
@@ -164,8 +182,14 @@ class AIRouterService:
             "openai_chat": self._handle_chat,
             "identificar_fotos": self._handle_identificar_fotos,
             "estimar_porcoes_do_prato": self._handle_estimar_porcoes,
+            "consultar_tbca": self._handle_consultar_tbca,
+            "consultar_taco_online": self._handle_consultar_taco_online,
             "transcrever_audio_usuario": self._handle_transcrever_audio,
+            "transcrever_texto_imagem": self._handle_transcrever_texto_imagem,
             "transcrever_texto_pdf": self._handle_transcrever_pdf,
+            "normalizar_texto_plano_alimentar": self._handle_normalizar_texto_plano,
+            "estruturar_plano_alimentar": self._handle_estruturar_plano,
+            "interpretar_porcoes_texto": self._handle_interpretar_porcoes_texto,
             "calcular_calorias_texto": self._handle_calcular_calorias,
         }
         handler = handlers.get(contexto)
@@ -173,8 +197,10 @@ class AIRouterService:
             return handler
         raise ServiceError(
             "Contexto nao suportado no /ai/router. "
-            "Use: chat, identificar_fotos, estimar_porcoes_do_prato, "
-            "transcrever_audio_usuario, transcrever_texto_pdf, calcular_calorias_texto.",
+            "Use: chat, identificar_fotos, estimar_porcoes_do_prato, consultar_tbca, "
+            "consultar_taco_online, transcrever_audio_usuario, transcrever_texto_imagem, "
+            "transcrever_texto_pdf, normalizar_texto_plano_alimentar, estruturar_plano_alimentar, "
+            "interpretar_porcoes_texto, calcular_calorias_texto.",
             status_code=400,
         )
 
@@ -327,6 +353,66 @@ class AIRouterService:
             status="parcial" if warnings else "sucesso",
         )
 
+    def _handle_consultar_tbca(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        consulta = _pick_str(payload, "consulta", "query")
+        if not consulta:
+            raise ServiceError("Payload invalido para consultar_tbca: informe 'consulta'.", status_code=400)
+
+        grams = _pick_positive_float(payload, "gramas", "grams", default=100.0)
+        if grams is None:
+            raise ServiceError(
+                "Payload invalido para consultar_tbca: 'gramas' deve ser numerico.",
+                status_code=400,
+            )
+
+        response = self._tbca_service.search(query=consulta, grams=grams)
+        warnings = _warn_if_missing_metrics(
+            response.por_100g.model_dump(),
+            label="TBCA",
+            keys=("energia_kcal", "proteina_g", "carboidratos_g", "lipidios_g"),
+        )
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
+    def _handle_consultar_taco_online(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        slug = _pick_str(payload, "slug")
+        page_url = _pick_str(payload, "url", "page_url")
+        consulta = _pick_str(payload, "consulta", "query")
+        if not any([slug, page_url, consulta]):
+            raise ServiceError(
+                "Payload invalido para consultar_taco_online: informe 'slug', 'url' ou 'consulta'.",
+                status_code=400,
+            )
+
+        grams = _pick_positive_float(payload, "gramas", "grams", default=100.0)
+        if grams is None:
+            raise ServiceError(
+                "Payload invalido para consultar_taco_online: 'gramas' deve ser numerico.",
+                status_code=400,
+            )
+
+        response = self._taco_online_service.get_food(
+            slug=slug,
+            page_url=page_url,
+            query=consulta,
+            grams=grams,
+        )
+        warnings = _warn_if_missing_metrics(
+            response.por_100g.model_dump(),
+            label="TACO Online",
+            keys=("energia_kcal", "proteina_g", "carboidratos_g", "lipidios_g"),
+        )
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
     def _handle_transcrever_audio(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
         audio_base64 = _pick_str(payload, "audio_base64", "arquivo_base64")
         if not audio_base64:
@@ -358,6 +444,37 @@ class AIRouterService:
             status="parcial" if warnings else "sucesso",
         )
 
+    def _handle_transcrever_texto_imagem(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        imagem_urls = _collect_text_values(payload, "imagem_urls", "image_urls")
+        imagem_url = _pick_str(payload, "imagem_url", "image_url")
+        if imagem_url:
+            imagem_urls.insert(0, imagem_url)
+        imagem_urls = _dedupe_strings(imagem_urls)
+
+        if not imagem_urls:
+            raise ServiceError(
+                "Payload invalido para transcrever_texto_imagem: informe 'imagem_url' ou 'imagem_urls'.",
+                status_code=400,
+            )
+
+        response = self._imagem_texto_service.transcrever_textos_de_imagens(
+            imagem_urls=imagem_urls,
+            contexto="transcrever_texto_imagem",
+            idioma=idioma,
+        )
+        warnings: list[str] = []
+        if any(item.status != "sucesso" for item in response.resultados):
+            warnings.append("Uma ou mais imagens nao puderam ser transcritas.")
+        if not any(item.texto_transcrito.strip() for item in response.resultados):
+            warnings.append("OCR nao encontrou texto legivel nas imagens.")
+
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
     def _handle_transcrever_pdf(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
         pdf_base64 = _pick_str(payload, "pdf_base64", "arquivo_base64")
         if not pdf_base64:
@@ -382,6 +499,132 @@ class AIRouterService:
         warnings: list[str] = []
         if not response.texto_transcrito.strip():
             warnings.append("Transcricao do PDF retornou texto vazio.")
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
+    def _handle_normalizar_texto_plano(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        textos_fonte = _collect_text_values(
+            payload,
+            "textos_fonte",
+            "texto_transcrito",
+            "texto",
+            "texto_normalizado",
+        )
+        imagem_urls = _collect_text_values(payload, "imagem_urls", "image_urls")
+        imagem_url = _pick_str(payload, "imagem_url", "image_url")
+        if imagem_url:
+            imagem_urls.insert(0, imagem_url)
+        imagem_urls = _dedupe_strings(imagem_urls)
+
+        response = None
+        if textos_fonte:
+            response = self._plano_texto_normalizado_service.normalizar_de_textos(
+                textos_fonte=textos_fonte,
+                contexto="normalizar_texto_plano_alimentar",
+                idioma=idioma,
+            )
+        elif imagem_urls:
+            response = self._plano_texto_normalizado_service.normalizar_de_imagens(
+                imagem_urls=imagem_urls,
+                contexto="normalizar_texto_plano_alimentar",
+                idioma=idioma,
+            )
+        else:
+            pdf_base64 = _pick_str(payload, "pdf_base64", "arquivo_base64")
+            if not pdf_base64:
+                raise ServiceError(
+                    "Payload invalido para normalizar_texto_plano_alimentar: informe "
+                    "'textos_fonte', 'texto_transcrito', 'imagem_url', 'imagem_urls' ou 'pdf_base64'.",
+                    status_code=400,
+                )
+            nome_arquivo = _pick_str(payload, "nome_arquivo", "file_name") or "documento.pdf"
+            pdf_bytes = _decode_base64_file(
+                encoded=pdf_base64,
+                file_kind="pdf",
+                max_bytes=self._settings.pdf_max_upload_bytes,
+            )
+            response = self._plano_texto_normalizado_service.normalizar_de_pdf(
+                pdf_bytes=pdf_bytes,
+                nome_arquivo=nome_arquivo,
+                contexto="normalizar_texto_plano_alimentar",
+                idioma=idioma,
+            )
+
+        warnings = _dedupe_strings(list(response.observacoes))
+        if not response.texto_normalizado.strip():
+            warnings.append("Texto normalizado vazio.")
+
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
+    def _handle_estruturar_plano(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        textos_fonte = _collect_text_values(
+            payload,
+            "textos_fonte",
+            "texto_transcrito",
+            "texto",
+            "texto_normalizado",
+        )
+        if not textos_fonte:
+            raise ServiceError(
+                "Payload invalido para estruturar_plano_alimentar: informe 'texto_transcrito' ou 'textos_fonte'.",
+                status_code=400,
+            )
+
+        response = self._plano_alimentar_service.estruturar_plano(
+            textos_fonte=textos_fonte,
+            contexto="estruturar_plano_alimentar",
+            idioma=idioma,
+        )
+        warnings: list[str] = []
+        if response.diagnostico:
+            warnings.extend(response.diagnostico.warnings)
+        warnings.extend(response.plano_alimentar.avisos_extracao)
+        warnings = _dedupe_strings(warnings)
+        if not response.plano_alimentar.plano_refeicoes:
+            warnings.append("Plano alimentar sem refeicoes estruturadas.")
+
+        return _RouteExecution(
+            resultado=response.model_dump(exclude_none=True),
+            warnings=warnings,
+            precisa_revisao=bool(warnings),
+            status="parcial" if warnings else "sucesso",
+        )
+
+    def _handle_interpretar_porcoes_texto(self, payload: dict[str, Any], idioma: str) -> _RouteExecution:
+        texto_transcrito = _pick_str(payload, "texto_transcrito", "texto")
+        if not texto_transcrito:
+            raise ServiceError(
+                "Payload invalido para interpretar_porcoes_texto: informe 'texto_transcrito'.",
+                status_code=400,
+            )
+
+        inferir_quando_ausente = _pick_bool(payload, "inferir_quando_ausente", default=False)
+        response = self._frase_porcoes_service.extrair_porcoes(
+            texto_transcrito=texto_transcrito,
+            contexto="interpretar_porcoes_texto",
+            idioma=idioma,
+            inferir_quando_ausente=inferir_quando_ausente,
+        )
+        warnings: list[str] = []
+        if not response.resultado_porcoes.itens:
+            warnings.append("Nenhuma porcao alimentar foi extraida do texto.")
+        if any(item.precisa_revisao for item in response.resultado_porcoes.itens):
+            warnings.append("Uma ou mais porcoes precisam de revisao.")
+        if response.agente.confianca_media is not None and response.agente.confianca_media < 0.7:
+            warnings.append("Confianca media baixa na interpretacao de porcoes.")
+        if response.resultado_porcoes.observacoes_gerais:
+            warnings.append(response.resultado_porcoes.observacoes_gerais)
+        warnings = _dedupe_strings(warnings)
+
         return _RouteExecution(
             resultado=response.model_dump(exclude_none=True),
             warnings=warnings,
@@ -448,6 +691,24 @@ def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
     return default
 
 
+def _pick_positive_float(
+    payload: dict[str, Any],
+    *keys: str,
+    default: float | None = None,
+) -> float | None:
+    for key in keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if value is None or value == "":
+            return default
+        parsed = _to_optional_float(value)
+        if parsed is None:
+            return None
+        return parsed
+    return default
+
+
 def _is_timeout_exception(exc: Exception) -> bool:
     current: BaseException | None = exc
     while current is not None:
@@ -479,4 +740,65 @@ def _decode_base64_file(*, encoded: str, file_kind: str, max_bytes: int) -> byte
             status_code=413,
         )
     return decoded
+
+
+def _to_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        normalized = normalized.replace(",", ".")
+        try:
+            return float(normalized)
+        except ValueError:
+            return None
+    return None
+
+
+def _collect_text_values(payload: dict[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        item = payload.get(key)
+        if isinstance(item, list):
+            for value in item:
+                text = _to_clean_string(value)
+                if text:
+                    values.append(text)
+            continue
+        text = _to_clean_string(item)
+        if text:
+            values.append(text)
+    return _dedupe_strings(values)
+
+
+def _to_clean_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        text = _to_clean_string(value)
+        if text and text not in deduped:
+            deduped.append(text)
+    return deduped
+
+
+def _warn_if_missing_metrics(
+    metrics: dict[str, Any],
+    *,
+    label: str,
+    keys: tuple[str, ...],
+) -> list[str]:
+    missing = [key for key in keys if metrics.get(key) is None]
+    if not missing:
+        return []
+    return [f"Fonte {label} retornou nutrientes principais incompletos."]
 
