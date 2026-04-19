@@ -51,7 +51,6 @@ from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoSer
 from vidasync_multiagents_ia.services.nutri_chat_service import NutriChatService
 from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService
 from vidasync_multiagents_ia.services.openai_chat_service import OpenAIChatService
-from vidasync_multiagents_ia.services.orchestrator_service import OrchestratorService
 from vidasync_multiagents_ia.services.plano_imagem_pipeline_teste_service import (
     PlanoImagemPipelineTesteService,
 )
@@ -96,7 +95,6 @@ __all__ = [
     "NutriChatService",
     "OpenFoodFactsService",
     "OpenAIChatService",
-    "OrchestratorService",
     "PlanoImagemPipelineTesteService",
     "PlanoPipelineE2ETesteService",
     "PlanoTextoNormalizadoService",

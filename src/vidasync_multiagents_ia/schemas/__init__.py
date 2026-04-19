@@ -63,10 +63,6 @@ from vidasync_multiagents_ia.schemas.open_food_facts import (
     OpenFoodFactsSearchRequest,
     OpenFoodFactsSearchResponse,
 )
-from vidasync_multiagents_ia.schemas.orchestrator import (
-    OrchestrateRequest,
-    OrchestrateResponse,
-)
 from vidasync_multiagents_ia.schemas.pdf_texto import (
     AgenteTranscricaoPdf,
     PdfTextoResponse,
@@ -187,8 +183,6 @@ __all__ = [
     "FotoCaloriasPipelineTesteRequest",
     "FotoCaloriasPipelineTesteResponse",
     "FotoCaloriasPipelineTesteTemposMs",
-    "OrchestrateRequest",
-    "OrchestrateResponse",
     "AgenteTranscricaoPdf",
     "PdfTextoResponse",
     "AgenteNormalizacaoPlanoTexto",

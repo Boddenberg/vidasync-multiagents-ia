@@ -12,7 +12,6 @@ from vidasync_multiagents_ia.api.routes.imagem_texto import router as imagem_tex
 from vidasync_multiagents_ia.api.routes.nutri_chat import router as nutri_chat_router
 from vidasync_multiagents_ia.api.routes.open_food_facts import router as open_food_facts_router
 from vidasync_multiagents_ia.api.routes.openai_chat import router as openai_chat_router
-from vidasync_multiagents_ia.api.routes.orchestrator import router as orchestrator_router
 from vidasync_multiagents_ia.api.routes.plano_imagem_pipeline_teste import (
     router as plano_imagem_pipeline_teste_router,
 )
@@ -32,7 +31,6 @@ api_router = APIRouter()
 settings = get_settings()
 api_router.include_router(system_router)
 api_router.include_router(ai_router_router)
-api_router.include_router(orchestrator_router)
 api_router.include_router(openai_chat_router)
 api_router.include_router(nutri_chat_router)
 api_router.include_router(audio_transcricao_router)

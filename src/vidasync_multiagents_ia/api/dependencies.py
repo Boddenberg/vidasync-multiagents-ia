@@ -13,7 +13,6 @@ from vidasync_multiagents_ia.services import (
     NutriChatService,
     OpenFoodFactsService,
     OpenAIChatService,
-    OrchestratorService,
     PlanoImagemPipelineTesteService,
     PlanoPipelineE2ETesteService,
     PlanoTextoNormalizadoService,
@@ -82,11 +81,6 @@ def get_plano_imagem_pipeline_teste_service() -> PlanoImagemPipelineTesteService
 def get_plano_pipeline_e2e_teste_service() -> PlanoPipelineE2ETesteService:
     settings = get_settings()
     return PlanoPipelineE2ETesteService(settings=settings)
-
-
-@lru_cache(maxsize=1)
-def get_orchestrator_service() -> OrchestratorService:
-    return OrchestratorService()
 
 
 @lru_cache(maxsize=1)
