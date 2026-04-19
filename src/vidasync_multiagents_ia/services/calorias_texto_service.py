@@ -496,16 +496,27 @@ class CaloriasTextoService:
     ) -> list[_StructuredFoodLookup]:
         if not requests:
             return []
-        # Mantem a ordem do lote deterministica por item.
-        #
-        # Cada item ainda consulta as fontes estruturadas em paralelo
-        # (_consultar_fontes_em_paralelo), mas o lote em si segue a ordem
-        # recebida. Isso evita flakiness em testes, logs e efeitos
-        # colaterais observaveis de clients fakes/instrumentados.
-        return [
-            self._coletar_lookup_estruturado(index=index, request=request)
-            for index, request in enumerate(requests)
-        ]
+        if len(requests) == 1:
+            return [self._coletar_lookup_estruturado(index=0, request=requests[0])]
+        # Paraleliza itens do lote mas preserva a ordem de retorno por
+        # indice para evitar flakiness em testes, logs e efeitos colaterais
+        # observaveis em clients fakes/instrumentados.
+        max_workers = min(4, len(requests))
+        results: list[_StructuredFoodLookup | None] = [None] * len(requests)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                submit_with_context(
+                    executor,
+                    self._coletar_lookup_estruturado,
+                    index=index,
+                    request=request,
+                ): index
+                for index, request in enumerate(requests)
+            }
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                results[index] = future.result()
+        return [item for item in results if item is not None]
 
     def _coletar_lookup_estruturado(
         self,
