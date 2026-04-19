@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -8,7 +7,7 @@ from langchain_core.documents import Document
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.observability import record_chat_rag_usage
 from vidasync_multiagents_ia.rag.vector_store import build_context_for_query
 
@@ -239,9 +238,7 @@ def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
 
 
 def _normalize_match_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value.lower())
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", ascii_text).strip()
+    return normalize_pt_text(value)
 
 
 def _build_rag_query(*, prompt: str, profile: dict[str, Any]) -> str:

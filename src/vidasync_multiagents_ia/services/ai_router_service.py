@@ -1,6 +1,5 @@
 import base64
 import logging
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -8,7 +7,7 @@ from time import perf_counter
 from typing import Any, Callable
 
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.observability import record_ai_router_request, record_ai_router_timeout
 from vidasync_multiagents_ia.observability.context import reset_trace_id, set_trace_id
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
@@ -684,8 +683,7 @@ def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        normalized = unicodedata.normalize("NFKD", value.strip().lower())
-        normalized = normalized.encode("ascii", "ignore").decode("ascii")
+        normalized = normalize_pt_text(value)
         if normalized in {"true", "1", "sim", "yes"}:
             return True
         if normalized in {"false", "0", "nao", "no"}:

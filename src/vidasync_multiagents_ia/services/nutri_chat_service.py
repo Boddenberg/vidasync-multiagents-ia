@@ -1,9 +1,9 @@
 import logging
-import unicodedata
 from time import perf_counter
 from typing import Any
 
 from vidasync_multiagents_ia.config import Settings
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.observability.payload_preview import preview_text
 from vidasync_multiagents_ia.schemas import NutriChatResponse
 from vidasync_multiagents_ia.services.openai_chat_service import OpenAIChatService
@@ -194,9 +194,7 @@ def _is_nutrition_scope(
 
 
 def _normalize_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-    return " ".join(ascii_only.lower().split())
+    return normalize_pt_text(value)
 
 
 __all__ = ["NutriChatService"]

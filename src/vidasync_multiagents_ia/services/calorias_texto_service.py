@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -10,7 +9,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient, OpenFoodFactsClient, TacoOnlineClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import (
@@ -1127,11 +1126,7 @@ def _tokenize_for_similarity(value: str) -> set[str]:
 
 
 def _normalize_for_similarity(value: str) -> str:
-    lowered = value.lower().strip()
-    if not lowered:
-        return ""
-    without_accents = unicodedata.normalize("NFKD", lowered)
-    return "".join(char for char in without_accents if not unicodedata.combining(char))
+    return normalize_pt_text(value)
 
 
 def _estimate_confidence(

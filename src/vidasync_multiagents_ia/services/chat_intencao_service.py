@@ -1,7 +1,7 @@
 import logging
-import unicodedata
 from dataclasses import dataclass
 
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.schemas import (
     IntencaoChatCandidata,
     IntencaoChatDetectada,
@@ -173,9 +173,7 @@ class ChatIntencaoService:
 
 
 def _normalizar_texto(value: str) -> str:
-    folded = unicodedata.normalize("NFKD", value.lower())
-    ascii_like = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    return " ".join(ascii_like.split())
+    return normalize_pt_text(value)
 
 
 def _score_regra(regra: _RegraIntencao, texto: str) -> float:

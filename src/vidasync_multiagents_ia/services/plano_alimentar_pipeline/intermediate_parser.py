@@ -1,7 +1,7 @@
 import re
-import unicodedata
 from typing import Any
 
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.schemas import ItemAlimentarPlano, OpcaoRefeicaoPlano, RefeicaoPlano
 from vidasync_multiagents_ia.services.plano_alimentar_pipeline.preprocessor import is_noise_food_text
 
@@ -184,9 +184,7 @@ def _normalize_lines(texto: str) -> list[str]:
 
 
 def _normalize_for_match(text: str) -> str:
-    normalized = _fix_common_mojibake(text.strip().lower())
-    normalized = unicodedata.normalize("NFKD", normalized).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", normalized)
+    return normalize_pt_text(_fix_common_mojibake(text))
 
 
 def _fix_common_mojibake(text: str) -> str:

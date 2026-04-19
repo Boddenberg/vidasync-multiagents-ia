@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 
@@ -9,7 +8,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.schemas import (
     AgenteEstruturacaoPlano,
     ContatoProfissionalPlano,
@@ -898,9 +897,7 @@ def _to_optional_float(value: Any) -> float | None:
 
 
 def _normalizar_nome(value: str) -> str:
-    lowered = value.strip().lower()
-    normalized = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", normalized).strip()
+    return normalize_pt_text(value)
 
 
 def _extrair_doses_suplementos(texto: str) -> dict[str, str]:

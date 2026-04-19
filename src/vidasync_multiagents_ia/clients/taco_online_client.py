@@ -1,10 +1,10 @@
 import logging
 import re
-import unicodedata
 from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TacoOnlineFoodIndexItem, TacoOnlineRawFoodData
@@ -363,6 +363,4 @@ def _cleanup_raw_value(value: str) -> str:
 
 
 def _normalize_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    return " ".join(ascii_text.lower().split())
+    return normalize_pt_text(value)

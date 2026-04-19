@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -9,7 +8,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.schemas import (
     AgentePorcoesTexto,
     FrasePorcoesResponse,
@@ -453,9 +452,7 @@ def _gramas_por_colher(item: ItemPorcaoTexto) -> float:
 
 
 def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", ascii_text).strip()
+    return normalize_pt_text(text)
 
 
 def _to_optional_str(value: Any) -> str | None:

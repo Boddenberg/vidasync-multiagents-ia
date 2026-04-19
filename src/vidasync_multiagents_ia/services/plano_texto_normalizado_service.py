@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
@@ -9,7 +8,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.schemas import (
     AgenteNormalizacaoPlanoTexto,
@@ -622,7 +621,5 @@ def _detect_meal_heading(line: str) -> str | None:
 
 
 def _normalize_for_match(value: str) -> str:
-    lowered = value.strip().lower()
-    normalized = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", normalized).strip()
+    return normalize_pt_text(value)
 
