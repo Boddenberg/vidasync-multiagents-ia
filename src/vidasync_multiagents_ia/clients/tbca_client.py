@@ -6,6 +6,7 @@ from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core.cache import TTLCache
+from vidasync_multiagents_ia.core.circuit_breaker import CircuitBreaker, CircuitOpenError
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TBCAFoodCandidate, TBCANutrientRow
@@ -181,6 +182,8 @@ class TBCAClient:
         log_max_chars: int = 4000,
         cache_ttl_seconds: float = 0.0,
         cache_max_entries: int = 256,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_seconds: float = 30.0,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -191,6 +194,11 @@ class TBCAClient:
         self._cache: TTLCache[str, str] = TTLCache(
             ttl_seconds=cache_ttl_seconds,
             max_entries=cache_max_entries,
+        )
+        self._breaker = CircuitBreaker(
+            name="tbca",
+            failure_threshold=circuit_failure_threshold,
+            recovery_seconds=circuit_recovery_seconds,
         )
 
     def search_foods(self, query: str) -> list[TBCAFoodCandidate]:
@@ -226,6 +234,16 @@ class TBCAClient:
                 duration_ms=0.0,
             )
             return cached
+        try:
+            self._breaker.before_call()
+        except CircuitOpenError as exc:
+            record_external_request(
+                client="tbca",
+                operation="request_html",
+                status="circuit_open",
+                duration_ms=0.0,
+            )
+            raise TBCAClientError(f"TBCA circuit open while requesting '{url}'.") from exc
         started = perf_counter()
         self._logger.info(
             "tbca.http.request",
@@ -272,6 +290,7 @@ class TBCAClient:
                     duration_ms=duration_ms,
                 )
                 self._cache.set(url, decoded)
+                self._breaker.record_success()
                 return decoded
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -287,6 +306,7 @@ class TBCAClient:
                 },
             )
             record_external_request(client="tbca", operation="request_html", status=str(exc.code), duration_ms=duration_ms)
+            self._breaker.record_failure()
             raise TBCAClientError(f"TBCA HTTP error while requesting '{url}': {exc.code}") from exc
         except URLError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -302,6 +322,7 @@ class TBCAClient:
                 },
             )
             record_external_request(client="tbca", operation="request_html", status="network_error", duration_ms=duration_ms)
+            self._breaker.record_failure()
             raise TBCAClientError(f"TBCA network error while requesting '{url}'.") from exc
         except TimeoutError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -317,6 +338,7 @@ class TBCAClient:
                 },
             )
             record_external_request(client="tbca", operation="request_html", status="timeout", duration_ms=duration_ms)
+            self._breaker.record_failure()
             raise TBCAClientError(f"TBCA request timeout while requesting '{url}'.") from exc
 
     def _preview(self, raw: str) -> str | None:

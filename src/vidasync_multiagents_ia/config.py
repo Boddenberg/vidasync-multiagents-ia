@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     debug_local_routes_enabled: bool = True
     external_http_cache_ttl_seconds: float = 300.0
     external_http_cache_max_entries: int = 256
+    external_http_circuit_failure_threshold: int = 5
+    external_http_circuit_recovery_seconds: float = 30.0
 
     @model_validator(mode="before")
     @classmethod

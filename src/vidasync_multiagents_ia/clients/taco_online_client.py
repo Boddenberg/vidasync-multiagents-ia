@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.core.cache import TTLCache
+from vidasync_multiagents_ia.core.circuit_breaker import CircuitBreaker, CircuitOpenError
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TacoOnlineFoodIndexItem, TacoOnlineRawFoodData
@@ -33,6 +34,8 @@ class TacoOnlineClient:
         log_max_chars: int = 4000,
         cache_ttl_seconds: float = 0.0,
         cache_max_entries: int = 256,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_seconds: float = 30.0,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -42,6 +45,11 @@ class TacoOnlineClient:
         self._http_cache: TTLCache[str, str] = TTLCache(
             ttl_seconds=cache_ttl_seconds,
             max_entries=cache_max_entries,
+        )
+        self._breaker = CircuitBreaker(
+            name="taco_online",
+            failure_threshold=circuit_failure_threshold,
+            recovery_seconds=circuit_recovery_seconds,
         )
 
     def fetch_html(self, page_url: str) -> str:
@@ -54,6 +62,18 @@ class TacoOnlineClient:
                 duration_ms=0.0,
             )
             return cached
+        try:
+            self._breaker.before_call()
+        except CircuitOpenError as exc:
+            record_external_request(
+                client="taco_online",
+                operation="fetch_html",
+                status="circuit_open",
+                duration_ms=0.0,
+            )
+            raise TacoOnlineClientError(
+                f"TACO Online circuit open while requesting '{page_url}'."
+            ) from exc
         started = perf_counter()
         self._logger.info(
             "taco_online.http.request",
@@ -100,6 +120,7 @@ class TacoOnlineClient:
                     duration_ms=duration_ms,
                 )
                 self._http_cache.set(page_url, decoded)
+                self._breaker.record_success()
                 return decoded
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -120,6 +141,7 @@ class TacoOnlineClient:
                 status=str(exc.code),
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise TacoOnlineClientError(
                 f"TACO Online HTTP error while requesting '{page_url}': {exc.code}",
                 status_code=exc.code,
@@ -143,6 +165,7 @@ class TacoOnlineClient:
                 status="network_error",
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise TacoOnlineClientError(f"TACO Online network error while requesting '{page_url}'.") from exc
         except TimeoutError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -163,6 +186,7 @@ class TacoOnlineClient:
                 status="timeout",
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise TacoOnlineClientError(f"TACO Online request timeout while requesting '{page_url}'.") from exc
 
     def _preview(self, raw: str) -> str | None:

@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core.cache import TTLCache
+from vidasync_multiagents_ia.core.circuit_breaker import CircuitBreaker, CircuitOpenError
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 
@@ -28,6 +29,8 @@ class OpenFoodFactsClient:
         log_max_chars: int = 4000,
         cache_ttl_seconds: float = 0.0,
         cache_max_entries: int = 256,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_seconds: float = 30.0,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -36,6 +39,11 @@ class OpenFoodFactsClient:
         self._cache: TTLCache[str, dict] = TTLCache(
             ttl_seconds=cache_ttl_seconds,
             max_entries=cache_max_entries,
+        )
+        self._breaker = CircuitBreaker(
+            name="open_food_facts",
+            failure_threshold=circuit_failure_threshold,
+            recovery_seconds=circuit_recovery_seconds,
         )
 
     def search_products(
@@ -64,6 +72,18 @@ class OpenFoodFactsClient:
                 duration_ms=0.0,
             )
             return cached
+        try:
+            self._breaker.before_call()
+        except CircuitOpenError as exc:
+            record_external_request(
+                client="open_food_facts",
+                operation="search_products",
+                status="circuit_open",
+                duration_ms=0.0,
+            )
+            raise OpenFoodFactsClientError(
+                "Open Food Facts circuit open while requesting search."
+            ) from exc
         started = perf_counter()
         self._logger.info(
             "open_food_facts.http.request",
@@ -109,8 +129,10 @@ class OpenFoodFactsClient:
                 try:
                     payload = json.loads(raw)
                 except json.JSONDecodeError as exc:
+                    self._breaker.record_failure()
                     raise OpenFoodFactsClientError("Resposta invalida do Open Food Facts.", status_code=502) from exc
                 self._cache.set(url, payload)
+                self._breaker.record_success()
                 return payload
         except HTTPError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -131,6 +153,7 @@ class OpenFoodFactsClient:
                 status=str(exc.code),
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise OpenFoodFactsClientError(
                 f"Open Food Facts HTTP error while requesting search: {exc.code}",
                 status_code=exc.code,
@@ -154,6 +177,7 @@ class OpenFoodFactsClient:
                 status="network_error",
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise OpenFoodFactsClientError("Open Food Facts network error while requesting search.") from exc
         except TimeoutError as exc:
             duration_ms = (perf_counter() - started) * 1000.0
@@ -174,6 +198,7 @@ class OpenFoodFactsClient:
                 status="timeout",
                 duration_ms=duration_ms,
             )
+            self._breaker.record_failure()
             raise OpenFoodFactsClientError("Open Food Facts request timeout while requesting search.") from exc
 
     def _preview(self, raw: str) -> str | None:

@@ -92,6 +92,8 @@ def get_tbca_service() -> TBCAService:
             log_max_chars=settings.log_external_max_body_chars,
             cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
             cache_max_entries=settings.external_http_cache_max_entries,
+            circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
+            circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
         )
     )
 
@@ -105,6 +107,8 @@ def get_taco_online_service() -> TacoOnlineService:
             log_max_chars=settings.log_external_max_body_chars,
             cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
             cache_max_entries=settings.external_http_cache_max_entries,
+            circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
+            circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
         )
     )
 
@@ -118,6 +122,8 @@ def get_open_food_facts_service() -> OpenFoodFactsService:
             log_max_chars=settings.log_external_max_body_chars,
             cache_ttl_seconds=settings.external_http_cache_ttl_seconds,
             cache_max_entries=settings.external_http_cache_max_entries,
+            circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
+            circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
         )
     )
 
