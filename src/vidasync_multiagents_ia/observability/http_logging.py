@@ -122,6 +122,7 @@ async def log_request_response(
         enabled=response_exclude_none,
     )
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Trace-ID"] = trace_id
     response_preview = _extract_response_preview(
         response=response,
         max_body_chars=max_body_chars,
