@@ -1,6 +1,19 @@
 import math
+from typing import Protocol
 
 from vidasync_multiagents_ia.rag.models import RagChunk, RagSearchHit
+
+
+class VectorIndex(Protocol):
+    @property
+    def dimensions(self) -> int:
+        ...
+
+    def rebuild(self, *, chunks: list[RagChunk], embeddings: list[list[float]]) -> None:
+        ...
+
+    def search(self, *, query_embedding: list[float], top_k: int, min_score: float) -> list[RagSearchHit]:
+        ...
 
 
 class InMemoryVectorIndex:

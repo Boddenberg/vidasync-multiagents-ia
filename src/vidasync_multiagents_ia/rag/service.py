@@ -10,7 +10,7 @@ from vidasync_multiagents_ia.rag.context_builder import RagContextBuilder
 from vidasync_multiagents_ia.rag.embeddings import TextEmbedder, build_text_embedder
 from vidasync_multiagents_ia.rag.loaders import NutritionKnowledgeLoader
 from vidasync_multiagents_ia.rag.models import RagIngestionSummary
-from vidasync_multiagents_ia.rag.vector_index import InMemoryVectorIndex
+from vidasync_multiagents_ia.rag.vector_index import InMemoryVectorIndex, VectorIndex
 
 
 class NutritionRagService:
@@ -22,7 +22,7 @@ class NutritionRagService:
         loader: NutritionKnowledgeLoader | None = None,
         chunker: SlidingWindowChunker | None = None,
         embedder: TextEmbedder | None = None,
-        index: InMemoryVectorIndex | None = None,
+        index: VectorIndex | None = None,
         context_builder: RagContextBuilder | None = None,
     ) -> None:
         self._settings = settings
