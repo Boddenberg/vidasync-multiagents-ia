@@ -6,6 +6,7 @@ from typing import Protocol
 from openai import OpenAI
 
 from vidasync_multiagents_ia.config import Settings
+from vidasync_multiagents_ia.core.cache import TTLCache
 
 
 class TextEmbedder(Protocol):
@@ -71,7 +72,42 @@ class OpenAITextEmbedder:
         return _normalize_vector(vector)
 
 
+class CachingTextEmbedder:
+    def __init__(self, *, inner: TextEmbedder, ttl_seconds: float, max_entries: int) -> None:
+        self._inner = inner
+        self.name = inner.name
+        self.dimensions = inner.dimensions
+        self._query_cache: TTLCache[str, list[float]] = TTLCache(
+            ttl_seconds=ttl_seconds,
+            max_entries=max_entries,
+        )
+
+    def embed_texts(self, *, texts: list[str]) -> list[list[float]]:
+        return self._inner.embed_texts(texts=texts)
+
+    def embed_query(self, *, query: str) -> list[float]:
+        key = _query_cache_key(name=self.name, query=query)
+        cached = self._query_cache.get(key)
+        if cached is not None:
+            return cached
+        vector = self._inner.embed_query(query=query)
+        self._query_cache.set(key, vector)
+        return vector
+
+
 def build_text_embedder(settings: Settings) -> TextEmbedder:
+    inner = _build_inner_embedder(settings)
+    ttl = getattr(settings, "rag_embedding_query_cache_ttl_seconds", 0.0)
+    if ttl and ttl > 0.0:
+        return CachingTextEmbedder(
+            inner=inner,
+            ttl_seconds=ttl,
+            max_entries=getattr(settings, "rag_embedding_query_cache_max_entries", 256),
+        )
+    return inner
+
+
+def _build_inner_embedder(settings: Settings) -> TextEmbedder:
     provider = settings.rag_embedding_provider.strip().lower()
     if provider in {"hash", "stub"}:
         return HashTextEmbedder()
@@ -95,6 +131,11 @@ def build_text_embedder(settings: Settings) -> TextEmbedder:
         except Exception:  # noqa: BLE001
             return HashTextEmbedder()
     return HashTextEmbedder()
+
+
+def _query_cache_key(*, name: str, query: str) -> str:
+    digest = hashlib.sha1(query.encode("utf-8")).hexdigest()
+    return f"{name}:{digest}"
 
 
 def _normalize_vector(vector: list[float]) -> list[float]:

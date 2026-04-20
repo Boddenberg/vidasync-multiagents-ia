@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     rag_context_max_chars: int = 4000
     rag_embedding_provider: str = "auto"
     rag_embedding_model: str = "text-embedding-3-small"
+    rag_embedding_query_cache_ttl_seconds: float = 300.0
+    rag_embedding_query_cache_max_entries: int = 512
     chat_memory_enabled: bool = True
     chat_memory_max_turns_short_term: int = 8
     chat_memory_summary_max_chars: int = 1800
