@@ -1,7 +1,8 @@
 from functools import lru_cache
 
 from vidasync_multiagents_ia.clients import OpenFoodFactsClient, TacoOnlineClient, TBCAClient
-from vidasync_multiagents_ia.config import get_settings
+from vidasync_multiagents_ia.config import Settings, get_settings
+from vidasync_multiagents_ia.core.retry import RetryConfig
 from vidasync_multiagents_ia.services import (
     AIRouterService,
     CaloriasTextoService,
@@ -83,6 +84,15 @@ def get_plano_pipeline_e2e_teste_service() -> PlanoPipelineE2ETesteService:
     return PlanoPipelineE2ETesteService(settings=settings)
 
 
+def _build_retry_config(settings: Settings) -> RetryConfig:
+    return RetryConfig(
+        max_attempts=settings.external_http_retry_max_attempts,
+        base_delay_seconds=settings.external_http_retry_base_delay_seconds,
+        max_delay_seconds=settings.external_http_retry_max_delay_seconds,
+        jitter_factor=settings.external_http_retry_jitter_factor,
+    )
+
+
 @lru_cache(maxsize=1)
 def get_tbca_service() -> TBCAService:
     settings = get_settings()
@@ -94,6 +104,7 @@ def get_tbca_service() -> TBCAService:
             cache_max_entries=settings.external_http_cache_max_entries,
             circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
             circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
+            retry_config=_build_retry_config(settings),
         )
     )
 
@@ -109,6 +120,7 @@ def get_taco_online_service() -> TacoOnlineService:
             cache_max_entries=settings.external_http_cache_max_entries,
             circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
             circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
+            retry_config=_build_retry_config(settings),
         )
     )
 
@@ -124,6 +136,7 @@ def get_open_food_facts_service() -> OpenFoodFactsService:
             cache_max_entries=settings.external_http_cache_max_entries,
             circuit_failure_threshold=settings.external_http_circuit_failure_threshold,
             circuit_recovery_seconds=settings.external_http_circuit_recovery_seconds,
+            retry_config=_build_retry_config(settings),
         )
     )
 

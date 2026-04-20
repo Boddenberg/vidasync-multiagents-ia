@@ -1,12 +1,13 @@
 import logging
 import re
-from time import perf_counter
+from time import perf_counter, sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.core.cache import TTLCache
 from vidasync_multiagents_ia.core.circuit_breaker import CircuitBreaker, CircuitOpenError
+from vidasync_multiagents_ia.core.retry import RetryConfig, compute_backoff, is_retryable_http_status
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TacoOnlineFoodIndexItem, TacoOnlineRawFoodData
@@ -36,6 +37,7 @@ class TacoOnlineClient:
         cache_max_entries: int = 256,
         circuit_failure_threshold: int = 5,
         circuit_recovery_seconds: float = 30.0,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -51,6 +53,7 @@ class TacoOnlineClient:
             failure_threshold=circuit_failure_threshold,
             recovery_seconds=circuit_recovery_seconds,
         )
+        self._retry_config = retry_config or RetryConfig()
 
     def fetch_html(self, page_url: str) -> str:
         cached = self._http_cache.get(page_url)
@@ -74,16 +77,6 @@ class TacoOnlineClient:
             raise TacoOnlineClientError(
                 f"TACO Online circuit open while requesting '{page_url}'."
             ) from exc
-        started = perf_counter()
-        self._logger.info(
-            "taco_online.http.request",
-            extra={
-                "client": "taco_online",
-                "operation": "fetch_html",
-                "url": sanitize_url(page_url),
-                "timeout_seconds": self._timeout_seconds,
-            },
-        )
         request = Request(
             url=page_url,
             headers={
@@ -94,105 +87,131 @@ class TacoOnlineClient:
                 )
             },
         )
-
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                content = response.read()
-                encoding = response.headers.get_content_charset() or "utf-8"
-                decoded = content.decode(encoding, errors="ignore")
+        max_attempts = max(1, self._retry_config.max_attempts)
+        for attempt in range(1, max_attempts + 1):
+            started = perf_counter()
+            self._logger.info(
+                "taco_online.http.request",
+                extra={
+                    "client": "taco_online",
+                    "operation": "fetch_html",
+                    "url": sanitize_url(page_url),
+                    "timeout_seconds": self._timeout_seconds,
+                    "attempt": attempt,
+                },
+            )
+            try:
+                with urlopen(request, timeout=self._timeout_seconds) as response:
+                    content = response.read()
+                    encoding = response.headers.get_content_charset() or "utf-8"
+                    decoded = content.decode(encoding, errors="ignore")
+                    duration_ms = (perf_counter() - started) * 1000.0
+                    self._logger.info(
+                        "taco_online.http.response",
+                        extra={
+                            "client": "taco_online",
+                            "operation": "fetch_html",
+                            "url": sanitize_url(page_url),
+                            "status_code": getattr(response, "status", 200),
+                            "duration_ms": round(duration_ms, 4),
+                            "response_size_bytes": len(content),
+                            "response_preview": self._preview(decoded),
+                            "attempt": attempt,
+                        },
+                    )
+                    record_external_request(
+                        client="taco_online",
+                        operation="fetch_html",
+                        status=str(getattr(response, "status", 200)),
+                        duration_ms=duration_ms,
+                    )
+                    self._http_cache.set(page_url, decoded)
+                    self._breaker.record_success()
+                    return decoded
+            except HTTPError as exc:
                 duration_ms = (perf_counter() - started) * 1000.0
-                self._logger.info(
-                    "taco_online.http.response",
-                    extra={
-                        "client": "taco_online",
-                        "operation": "fetch_html",
-                        "url": sanitize_url(page_url),
-                        "status_code": getattr(response, "status", 200),
-                        "duration_ms": round(duration_ms, 4),
-                        "response_size_bytes": len(content),
-                        "response_preview": self._preview(decoded),
-                    },
+                retryable = is_retryable_http_status(exc.code) and attempt < max_attempts
+                self._log_error_attempt(
+                    url=page_url,
+                    status_code=exc.code,
+                    duration_ms=duration_ms,
+                    error_type="HTTPError",
+                    attempt=attempt,
+                    retryable=retryable,
                 )
                 record_external_request(
                     client="taco_online",
                     operation="fetch_html",
-                    status=str(getattr(response, "status", 200)),
+                    status=f"retry_{exc.code}" if retryable else str(exc.code),
                     duration_ms=duration_ms,
                 )
-                self._http_cache.set(page_url, decoded)
-                self._breaker.record_success()
-                return decoded
-        except HTTPError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "taco_online.http.error",
-                extra={
-                    "client": "taco_online",
-                    "operation": "fetch_html",
-                    "url": sanitize_url(page_url),
-                    "status_code": exc.code,
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "HTTPError",
-                },
-            )
-            record_external_request(
-                client="taco_online",
-                operation="fetch_html",
-                status=str(exc.code),
-                duration_ms=duration_ms,
-            )
-            self._breaker.record_failure()
-            raise TacoOnlineClientError(
-                f"TACO Online HTTP error while requesting '{page_url}': {exc.code}",
-                status_code=exc.code,
-            ) from exc
-        except URLError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "taco_online.http.error",
-                extra={
-                    "client": "taco_online",
-                    "operation": "fetch_html",
-                    "url": sanitize_url(page_url),
-                    "status_code": "network_error",
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "URLError",
-                },
-            )
-            record_external_request(
-                client="taco_online",
-                operation="fetch_html",
-                status="network_error",
-                duration_ms=duration_ms,
-            )
-            self._breaker.record_failure()
-            raise TacoOnlineClientError(f"TACO Online network error while requesting '{page_url}'.") from exc
-        except TimeoutError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "taco_online.http.error",
-                extra={
-                    "client": "taco_online",
-                    "operation": "fetch_html",
-                    "url": sanitize_url(page_url),
-                    "status_code": "timeout",
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "TimeoutError",
-                },
-            )
-            record_external_request(
-                client="taco_online",
-                operation="fetch_html",
-                status="timeout",
-                duration_ms=duration_ms,
-            )
-            self._breaker.record_failure()
-            raise TacoOnlineClientError(f"TACO Online request timeout while requesting '{page_url}'.") from exc
+                if retryable:
+                    sleep(compute_backoff(attempt, self._retry_config))
+                    continue
+                self._breaker.record_failure()
+                raise TacoOnlineClientError(
+                    f"TACO Online HTTP error while requesting '{page_url}': {exc.code}",
+                    status_code=exc.code,
+                ) from exc
+            except (URLError, TimeoutError) as exc:
+                duration_ms = (perf_counter() - started) * 1000.0
+                is_timeout = isinstance(exc, TimeoutError)
+                error_type = "TimeoutError" if is_timeout else "URLError"
+                status_label = "timeout" if is_timeout else "network_error"
+                retryable = attempt < max_attempts
+                self._log_error_attempt(
+                    url=page_url,
+                    status_code=status_label,
+                    duration_ms=duration_ms,
+                    error_type=error_type,
+                    attempt=attempt,
+                    retryable=retryable,
+                )
+                record_external_request(
+                    client="taco_online",
+                    operation="fetch_html",
+                    status=f"retry_{status_label}" if retryable else status_label,
+                    duration_ms=duration_ms,
+                )
+                if retryable:
+                    sleep(compute_backoff(attempt, self._retry_config))
+                    continue
+                self._breaker.record_failure()
+                if is_timeout:
+                    raise TacoOnlineClientError(
+                        f"TACO Online request timeout while requesting '{page_url}'."
+                    ) from exc
+                raise TacoOnlineClientError(
+                    f"TACO Online network error while requesting '{page_url}'."
+                ) from exc
 
     def _preview(self, raw: str) -> str | None:
         if not self._log_payloads:
             return None
         return preview_text(raw, max_chars=self._log_max_chars)
+
+    def _log_error_attempt(
+        self,
+        *,
+        url: str,
+        status_code: int | str,
+        duration_ms: float,
+        error_type: str,
+        attempt: int,
+        retryable: bool,
+    ) -> None:
+        self._logger.warning(
+            "taco_online.http.retry" if retryable else "taco_online.http.error",
+            extra={
+                "client": "taco_online",
+                "operation": "fetch_html",
+                "url": sanitize_url(url),
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 4),
+                "error_type": error_type,
+                "attempt": attempt,
+            },
+        )
 
     def extract_public_food_data(self, html: str, expected_slug: str | None) -> TacoOnlineRawFoodData:
         window = self._find_food_window(html=html, expected_slug=expected_slug)

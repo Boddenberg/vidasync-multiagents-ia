@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     external_http_cache_max_entries: int = 256
     external_http_circuit_failure_threshold: int = 5
     external_http_circuit_recovery_seconds: float = 30.0
+    external_http_retry_max_attempts: int = 3
+    external_http_retry_base_delay_seconds: float = 0.5
+    external_http_retry_max_delay_seconds: float = 4.0
+    external_http_retry_jitter_factor: float = 0.25
 
     @model_validator(mode="before")
     @classmethod

@@ -1,5 +1,5 @@
 import logging
-from time import perf_counter
+from time import perf_counter, sleep
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 
 from vidasync_multiagents_ia.core.cache import TTLCache
 from vidasync_multiagents_ia.core.circuit_breaker import CircuitBreaker, CircuitOpenError
+from vidasync_multiagents_ia.core.retry import RetryConfig, compute_backoff, is_retryable_http_status
 from vidasync_multiagents_ia.observability import record_external_request
 from vidasync_multiagents_ia.observability.payload_preview import preview_text, sanitize_url
 from vidasync_multiagents_ia.schemas import TBCAFoodCandidate, TBCANutrientRow
@@ -184,6 +185,7 @@ class TBCAClient:
         cache_max_entries: int = 256,
         circuit_failure_threshold: int = 5,
         circuit_recovery_seconds: float = 30.0,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(__name__)
@@ -200,6 +202,7 @@ class TBCAClient:
             failure_threshold=circuit_failure_threshold,
             recovery_seconds=circuit_recovery_seconds,
         )
+        self._retry_config = retry_config or RetryConfig()
 
     def search_foods(self, query: str) -> list[TBCAFoodCandidate]:
         search_url = f"{self._search_url}?{urlencode({'produto': query})}"
@@ -244,16 +247,6 @@ class TBCAClient:
                 duration_ms=0.0,
             )
             raise TBCAClientError(f"TBCA circuit open while requesting '{url}'.") from exc
-        started = perf_counter()
-        self._logger.info(
-            "tbca.http.request",
-            extra={
-                "client": "tbca",
-                "operation": "request_html",
-                "url": sanitize_url(url),
-                "timeout_seconds": self._timeout_seconds,
-            },
-        )
         request = Request(
             url=url,
             headers={
@@ -264,87 +257,124 @@ class TBCAClient:
                 )
             },
         )
-
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                content = response.read()
-                encoding = response.headers.get_content_charset() or "utf-8"
-                decoded = content.decode(encoding, errors="ignore")
+        max_attempts = max(1, self._retry_config.max_attempts)
+        for attempt in range(1, max_attempts + 1):
+            started = perf_counter()
+            self._logger.info(
+                "tbca.http.request",
+                extra={
+                    "client": "tbca",
+                    "operation": "request_html",
+                    "url": sanitize_url(url),
+                    "timeout_seconds": self._timeout_seconds,
+                    "attempt": attempt,
+                },
+            )
+            try:
+                with urlopen(request, timeout=self._timeout_seconds) as response:
+                    content = response.read()
+                    encoding = response.headers.get_content_charset() or "utf-8"
+                    decoded = content.decode(encoding, errors="ignore")
+                    duration_ms = (perf_counter() - started) * 1000.0
+                    self._logger.info(
+                        "tbca.http.response",
+                        extra={
+                            "client": "tbca",
+                            "operation": "request_html",
+                            "url": sanitize_url(url),
+                            "status_code": getattr(response, "status", 200),
+                            "duration_ms": round(duration_ms, 4),
+                            "response_size_bytes": len(content),
+                            "response_preview": self._preview(decoded),
+                            "attempt": attempt,
+                        },
+                    )
+                    record_external_request(
+                        client="tbca",
+                        operation="request_html",
+                        status=str(getattr(response, "status", 200)),
+                        duration_ms=duration_ms,
+                    )
+                    self._cache.set(url, decoded)
+                    self._breaker.record_success()
+                    return decoded
+            except HTTPError as exc:
                 duration_ms = (perf_counter() - started) * 1000.0
-                self._logger.info(
-                    "tbca.http.response",
-                    extra={
-                        "client": "tbca",
-                        "operation": "request_html",
-                        "url": sanitize_url(url),
-                        "status_code": getattr(response, "status", 200),
-                        "duration_ms": round(duration_ms, 4),
-                        "response_size_bytes": len(content),
-                        "response_preview": self._preview(decoded),
-                    },
+                retryable = is_retryable_http_status(exc.code) and attempt < max_attempts
+                self._log_error_attempt(
+                    url=url,
+                    status_code=exc.code,
+                    duration_ms=duration_ms,
+                    error_type="HTTPError",
+                    attempt=attempt,
+                    retryable=retryable,
                 )
                 record_external_request(
                     client="tbca",
                     operation="request_html",
-                    status=str(getattr(response, "status", 200)),
+                    status=f"retry_{exc.code}" if retryable else str(exc.code),
                     duration_ms=duration_ms,
                 )
-                self._cache.set(url, decoded)
-                self._breaker.record_success()
-                return decoded
-        except HTTPError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "tbca.http.error",
-                extra={
-                    "client": "tbca",
-                    "operation": "request_html",
-                    "url": sanitize_url(url),
-                    "status_code": exc.code,
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "HTTPError",
-                },
-            )
-            record_external_request(client="tbca", operation="request_html", status=str(exc.code), duration_ms=duration_ms)
-            self._breaker.record_failure()
-            raise TBCAClientError(f"TBCA HTTP error while requesting '{url}': {exc.code}") from exc
-        except URLError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "tbca.http.error",
-                extra={
-                    "client": "tbca",
-                    "operation": "request_html",
-                    "url": sanitize_url(url),
-                    "status_code": "network_error",
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "URLError",
-                },
-            )
-            record_external_request(client="tbca", operation="request_html", status="network_error", duration_ms=duration_ms)
-            self._breaker.record_failure()
-            raise TBCAClientError(f"TBCA network error while requesting '{url}'.") from exc
-        except TimeoutError as exc:
-            duration_ms = (perf_counter() - started) * 1000.0
-            self._logger.warning(
-                "tbca.http.error",
-                extra={
-                    "client": "tbca",
-                    "operation": "request_html",
-                    "url": sanitize_url(url),
-                    "status_code": "timeout",
-                    "duration_ms": round(duration_ms, 4),
-                    "error_type": "TimeoutError",
-                },
-            )
-            record_external_request(client="tbca", operation="request_html", status="timeout", duration_ms=duration_ms)
-            self._breaker.record_failure()
-            raise TBCAClientError(f"TBCA request timeout while requesting '{url}'.") from exc
+                if retryable:
+                    sleep(compute_backoff(attempt, self._retry_config))
+                    continue
+                self._breaker.record_failure()
+                raise TBCAClientError(f"TBCA HTTP error while requesting '{url}': {exc.code}") from exc
+            except (URLError, TimeoutError) as exc:
+                duration_ms = (perf_counter() - started) * 1000.0
+                is_timeout = isinstance(exc, TimeoutError)
+                error_type = "TimeoutError" if is_timeout else "URLError"
+                status_label = "timeout" if is_timeout else "network_error"
+                retryable = attempt < max_attempts
+                self._log_error_attempt(
+                    url=url,
+                    status_code=status_label,
+                    duration_ms=duration_ms,
+                    error_type=error_type,
+                    attempt=attempt,
+                    retryable=retryable,
+                )
+                record_external_request(
+                    client="tbca",
+                    operation="request_html",
+                    status=f"retry_{status_label}" if retryable else status_label,
+                    duration_ms=duration_ms,
+                )
+                if retryable:
+                    sleep(compute_backoff(attempt, self._retry_config))
+                    continue
+                self._breaker.record_failure()
+                if is_timeout:
+                    raise TBCAClientError(f"TBCA request timeout while requesting '{url}'.") from exc
+                raise TBCAClientError(f"TBCA network error while requesting '{url}'.") from exc
 
     def _preview(self, raw: str) -> str | None:
         if not self._log_payloads:
             return None
         return preview_text(raw, max_chars=self._log_max_chars)
+
+    def _log_error_attempt(
+        self,
+        *,
+        url: str,
+        status_code: int | str,
+        duration_ms: float,
+        error_type: str,
+        attempt: int,
+        retryable: bool,
+    ) -> None:
+        self._logger.warning(
+            "tbca.http.retry" if retryable else "tbca.http.error",
+            extra={
+                "client": "tbca",
+                "operation": "request_html",
+                "url": sanitize_url(url),
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 4),
+                "error_type": error_type,
+                "attempt": attempt,
+            },
+        )
 
 
 def _normalize_space(text: str) -> str:
