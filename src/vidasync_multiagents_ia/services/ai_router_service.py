@@ -1,17 +1,28 @@
-import base64
 import logging
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, Callable
 
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
+from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.observability import record_ai_router_request, record_ai_router_timeout
 from vidasync_multiagents_ia.observability.context import reset_trace_id, set_trace_id
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import AIRouterRequest, AIRouterResponse
+from vidasync_multiagents_ia.services.ai_router_helpers import (
+    collect_text_values as _collect_text_values,
+    decode_base64_file as _decode_base64_file,
+    dedupe_strings as _dedupe_strings,
+    is_timeout_exception as _is_timeout_exception,
+    pick_bool as _pick_bool,
+    pick_positive_float as _pick_positive_float,
+    pick_str as _pick_str,
+    resolve_trace_id as _resolve_trace_id,
+    to_clean_string as _to_clean_string,
+    to_optional_float as _to_optional_float,
+    warn_if_missing_metrics as _warn_if_missing_metrics,
+)
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
 from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
@@ -657,148 +668,3 @@ class AIRouterService:
             precisa_revisao=bool(warnings),
             status="parcial" if warnings else "sucesso",
         )
-
-
-def _resolve_trace_id(trace_id: str | None) -> str:
-    if trace_id and trace_id.strip():
-        return trace_id.strip()
-    return uuid.uuid4().hex
-
-
-def _pick_str(payload: dict[str, Any], *keys: str) -> str | None:
-    for key in keys:
-        value = payload.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
-
-
-def _pick_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
-    value = payload.get(key)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = normalize_pt_text(value)
-        if normalized in {"true", "1", "sim", "yes"}:
-            return True
-        if normalized in {"false", "0", "nao", "no"}:
-            return False
-    return default
-
-
-def _pick_positive_float(
-    payload: dict[str, Any],
-    *keys: str,
-    default: float | None = None,
-) -> float | None:
-    for key in keys:
-        if key not in payload:
-            continue
-        value = payload.get(key)
-        if value is None or value == "":
-            return default
-        parsed = _to_optional_float(value)
-        if parsed is None:
-            return None
-        return parsed
-    return default
-
-
-def _is_timeout_exception(exc: Exception) -> bool:
-    current: BaseException | None = exc
-    while current is not None:
-        name = current.__class__.__name__.lower()
-        message = str(current).lower()
-        if "timeout" in name or "timed out" in message or "timeout" in message:
-            return True
-        current = current.__cause__ or current.__context__
-    return False
-
-
-def _decode_base64_file(*, encoded: str, file_kind: str, max_bytes: int) -> bytes:
-    # Aceita base64 puro ou data URI (data:...;base64,<conteudo>).
-    raw = encoded.strip()
-    if ";base64," in raw:
-        raw = raw.split(",", 1)[1]
-    raw = "".join(raw.split())
-    if not raw:
-        raise ServiceError(f"Arquivo {file_kind} em base64 esta vazio.", status_code=400)
-
-    try:
-        decoded = base64.b64decode(raw, validate=True)
-    except Exception as exc:  # noqa: BLE001
-        raise ServiceError(f"Arquivo {file_kind} em base64 invalido.", status_code=400) from exc
-
-    if len(decoded) > max_bytes:
-        raise ServiceError(
-            f"Arquivo {file_kind} acima do limite de {max_bytes} bytes.",
-            status_code=413,
-        )
-    return decoded
-
-
-def _to_optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        normalized = value.strip()
-        if not normalized:
-            return None
-        normalized = normalized.replace(",", ".")
-        try:
-            return float(normalized)
-        except ValueError:
-            return None
-    return None
-
-
-def _collect_text_values(payload: dict[str, Any], *keys: str) -> list[str]:
-    values: list[str] = []
-    for key in keys:
-        item = payload.get(key)
-        if isinstance(item, list):
-            for value in item:
-                text = _to_clean_string(value)
-                if text:
-                    values.append(text)
-            continue
-        text = _to_clean_string(item)
-        if text:
-            values.append(text)
-    return _dedupe_strings(values)
-
-
-def _to_clean_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _dedupe_strings(values: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for value in values:
-        text = _to_clean_string(value)
-        if text and text not in deduped:
-            deduped.append(text)
-    return deduped
-
-
-def _warn_if_missing_metrics(
-    metrics: dict[str, Any],
-    *,
-    label: str,
-    keys: tuple[str, ...],
-) -> list[str]:
-    missing = [key for key in keys if metrics.get(key) is None]
-    if not missing:
-        return []
-    return [f"Fonte {label} retornou nutrientes principais incompletos."]
-
