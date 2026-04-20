@@ -92,7 +92,6 @@ def run() -> None:
             "metrics_enabled": settings.metrics_enabled,
             "response_exclude_none": settings.response_exclude_none,
             "debug_local_routes_enabled": settings.debug_local_routes_enabled,
-            "chat_orchestrator_engine": settings.chat_orchestrator_engine,
         },
     )
     uvicorn.run(

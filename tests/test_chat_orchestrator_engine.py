@@ -1,9 +1,6 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import ChatMemoriaEstado, ChatRoteamento, IntencaoChatDetectada
 from vidasync_multiagents_ia.services.chat_conversacional_router_service import (
     ChatConversacionalRouteResult,
@@ -11,6 +8,9 @@ from vidasync_multiagents_ia.services.chat_conversacional_router_service import 
 from vidasync_multiagents_ia.services.orchestration import (
     ChatExecutionInput,
     build_chat_orchestrator,
+)
+from vidasync_multiagents_ia.services.orchestration.chat_langgraph_orchestrator import (
+    LangGraphChatOrchestrator,
 )
 
 
@@ -99,19 +99,16 @@ class _FakeChatMemoryService:
         )
 
 
-@pytest.mark.parametrize("engine", ["legacy", "langgraph"])
-def test_chat_orchestrator_engine_switch(engine: str) -> None:
-    settings = Settings(
-        openai_api_key="test-key",
-        openai_model="gpt-4o-mini",
-        chat_orchestrator_engine=engine,
-    )
+def test_chat_orchestrator_uses_langgraph_engine() -> None:
+    settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
     orchestrator = build_chat_orchestrator(
         settings=settings,
         intencao_service=_FakeChatIntencaoService(),  # type: ignore[arg-type]
         router_service=_FakeChatRouterService(),  # type: ignore[arg-type]
         memory_service=_FakeChatMemoryService(),  # type: ignore[arg-type]
     )
+
+    assert isinstance(orchestrator, LangGraphChatOrchestrator)
 
     result = orchestrator.execute_chat(
         request=ChatExecutionInput(prompt="Quantas calorias tem arroz?", idioma="pt-BR"),
@@ -130,18 +127,3 @@ def test_chat_orchestrator_engine_switch(engine: str) -> None:
         "compor_resposta",
         "saida_final",
     ]
-
-
-def test_chat_orchestrator_engine_invalido() -> None:
-    settings = Settings(
-        openai_api_key="test-key",
-        openai_model="gpt-4o-mini",
-        chat_orchestrator_engine="invalido",
-    )
-    with pytest.raises(ServiceError):
-        build_chat_orchestrator(
-            settings=settings,
-            intencao_service=_FakeChatIntencaoService(),  # type: ignore[arg-type]
-            router_service=_FakeChatRouterService(),  # type: ignore[arg-type]
-            memory_service=_FakeChatMemoryService(),  # type: ignore[arg-type]
-        )

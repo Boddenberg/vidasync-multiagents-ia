@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 60.0
     plano_alimentar_refeicoes_second_pass_enabled: bool = False
     plano_pipeline_orchestrator_engine: str = "langgraph"
-    chat_orchestrator_engine: str = "langgraph"
     debug_local_routes_enabled: bool = True
     external_http_cache_ttl_seconds: float = 300.0
     external_http_cache_max_entries: int = 256
