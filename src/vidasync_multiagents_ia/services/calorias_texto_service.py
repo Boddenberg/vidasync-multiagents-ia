@@ -1,5 +1,4 @@
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,7 +8,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient, OpenFoodFactsClient, TacoOnlineClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
+from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.observability.context import submit_with_context
 from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import (
@@ -21,60 +20,36 @@ from vidasync_multiagents_ia.schemas import (
     SelecaoFonteCalorias,
     TotaisCaloriasTexto,
 )
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
+    StructuredFoodRequest as _StructuredFoodRequest,
+    contains_explicit_grams as _contains_explicit_grams,
+    extract_single_food_query as _extract_single_food_query,
+    extract_single_food_request as _extract_single_food_request,
+    extract_structured_food_requests as _extract_structured_food_requests,
+    format_grams_text as _format_grams_text,
+    normalize_structured_food_requests as _normalize_structured_food_requests,
+    sum_values as _sum_values,
+    to_optional_bool as _to_optional_bool,
+    to_optional_float as _to_optional_float,
+    to_optional_int as _to_optional_int,
+    to_optional_str as _to_optional_str,
+    to_str_list as _to_str_list,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
+    FONTE_OPEN_FOOD_FACTS as _FONTE_OPEN_FOOD_FACTS,
+    FONTE_TACO as _FONTE_TACO,
+    FonteCaloriasCandidate as _FonteCaloriasCandidate,
+    calculate_candidate_portion as _calculate_candidate_portion,
+    candidate_score as _candidate_score,
+    estimate_confidence as _estimate_confidence,
+    has_core_macros as _has_core_macros,
+    match_candidate_by_source as _match_candidate_by_source,
+    normalize_source_name as _normalize_source_name,
+    order_candidates as _order_candidates,
+    select_best_open_food_facts_product as _select_best_open_food_facts_product,
+)
 from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService
 from vidasync_multiagents_ia.services.taco_online_service import TacoOnlineService
-
-_FONTE_TACO = "TABELA_TACO_ONLINE"
-_FONTE_OPEN_FOOD_FACTS = "OPEN_FOOD_FACTS"
-
-
-@dataclass(slots=True)
-class _FonteCaloriasCandidate:
-    fonte: str
-    item: str
-    calorias_kcal: float | None
-    proteina_g: float | None
-    carboidratos_g: float | None
-    lipidios_g: float | None
-    calorias_kcal_100g: float | None
-    proteina_g_100g: float | None
-    carboidratos_g_100g: float | None
-    lipidios_g_100g: float | None
-    base_calculo: str | None
-    confianca: float
-    detalhes: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "fonte": self.fonte,
-            "item": self.item,
-            "base_calculo": self.base_calculo,
-            "por_100g": {
-                "calorias_kcal": self.calorias_kcal_100g,
-                "proteina_g": self.proteina_g_100g,
-                "carboidratos_g": self.carboidratos_g_100g,
-                "lipidios_g": self.lipidios_g_100g,
-            },
-            "ajustado": {
-                "calorias_kcal": self.calorias_kcal,
-                "proteina_g": self.proteina_g,
-                "carboidratos_g": self.carboidratos_g,
-                "lipidios_g": self.lipidios_g,
-            },
-            "calorias_kcal": self.calorias_kcal,
-            "proteina_g": self.proteina_g,
-            "carboidratos_g": self.carboidratos_g,
-            "lipidios_g": self.lipidios_g,
-            "confianca": self.confianca,
-            "detalhes": self.detalhes,
-        }
-
-
-@dataclass(slots=True)
-class _StructuredFoodRequest:
-    descricao_original: str
-    food_query: str
-    grams: float
 
 
 @dataclass(slots=True)
@@ -962,91 +937,6 @@ class CaloriasTextoService:
         )
 
 
-def _sum_values(values: list[float | None]) -> float | None:
-    numbers = [value for value in values if value is not None]
-    if not numbers:
-        return None
-    return round(sum(numbers), 4)
-
-
-def _to_optional_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text
-
-
-def _to_optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if not isinstance(value, str):
-        return None
-
-    raw = value.strip().lower()
-    if raw in {"", "na", "n/a", "nd", "tr", "-", "--"}:
-        return None
-
-    normalized = raw.replace("kcal", "").replace("g", "").replace("mg", "").strip()
-    normalized = normalized.replace(".", "").replace(",", ".") if "," in normalized else normalized
-    normalized = re.sub(r"[^0-9.\-]", "", normalized)
-    if normalized in {"", ".", "-", "-."}:
-        return None
-    try:
-        return float(normalized)
-    except ValueError:
-        return None
-
-
-def _to_optional_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value) if value.is_integer() else None
-    if not isinstance(value, str):
-        return None
-
-    stripped = value.strip()
-    if not stripped:
-        return None
-    try:
-        return int(stripped)
-    except ValueError:
-        return None
-
-
-def _to_optional_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        if value == 1:
-            return True
-        if value == 0:
-            return False
-        return None
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().lower()
-    if normalized in {"true", "1", "sim", "yes", "y", "pode", "can"}:
-        return True
-    if normalized in {"false", "0", "nao", "não", "no", "n", "nao_pode", "cannot"}:
-        return False
-    return None
-
-
-def _to_str_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str):
-        stripped = value.strip()
-        return [stripped] if stripped else []
-    return []
-
 
 def _first_present_value(payload: dict[str, Any], *keys: str) -> Any:
     for key in keys:
@@ -1073,315 +963,3 @@ def _confianca_media_itens(itens: list[ItemCaloriasTexto]) -> float | None:
     if not confiancas:
         return None
     return round(sum(confiancas) / len(confiancas), 4)
-
-
-def _select_best_open_food_facts_product(
-    products: list[OpenFoodFactsProduct],
-    *,
-    food_query: str,
-) -> OpenFoodFactsProduct | None:
-    if not products:
-        return None
-    return max(products, key=lambda product: _open_food_facts_product_score(product, food_query=food_query))
-
-
-def _open_food_facts_product_score(product: OpenFoodFactsProduct, *, food_query: str) -> float:
-    adjusted = product.ajustado
-    score = 0.0
-    if adjusted.energia_kcal is not None:
-        score += 3.0
-    if adjusted.proteina_g is not None:
-        score += 1.0
-    if adjusted.carboidratos_g is not None:
-        score += 1.0
-    if adjusted.lipidios_g is not None:
-        score += 1.0
-    if product.nome_produto:
-        score += 0.2
-    if product.marcas:
-        score += 0.1
-    score += _open_food_facts_query_relevance_score(food_query=food_query, product=product)
-    return score
-
-
-def _open_food_facts_query_relevance_score(*, food_query: str, product: OpenFoodFactsProduct) -> float:
-    query_tokens = _tokenize_for_similarity(food_query)
-    if not query_tokens:
-        return 0.0
-
-    product_text = f"{product.nome_produto or ''} {product.marcas or ''}".strip()
-    product_tokens = _tokenize_for_similarity(product_text)
-    if not product_tokens:
-        return 0.0
-
-    overlap = query_tokens.intersection(product_tokens)
-    if not overlap:
-        return 0.0
-
-    coverage = len(overlap) / len(query_tokens)
-    score = (coverage * 4.0) + (len(overlap) * 0.3)
-
-    normalized_query = _normalize_for_similarity(food_query)
-    normalized_product = _normalize_for_similarity(product_text)
-    if normalized_query and normalized_query in normalized_product:
-        score += 2.0
-
-    return score
-
-
-def _tokenize_for_similarity(value: str) -> set[str]:
-    normalized = _normalize_for_similarity(value)
-    if not normalized:
-        return set()
-    return {token for token in re.split(r"[^a-z0-9]+", normalized) if len(token) >= 3}
-
-
-def _normalize_for_similarity(value: str) -> str:
-    return normalize_pt_text(value)
-
-
-def _estimate_confidence(
-    *,
-    fonte: str,
-    calorias_kcal: float | None,
-    proteina_g: float | None,
-    carboidratos_g: float | None,
-    lipidios_g: float | None,
-) -> float:
-    filled = sum(value is not None for value in (calorias_kcal, proteina_g, carboidratos_g, lipidios_g))
-    score = 0.5 + (0.1 * filled)
-    if calorias_kcal is not None:
-        score += 0.15
-    if fonte == _FONTE_TACO:
-        score += 0.05
-    return round(min(score, 0.99), 4)
-
-
-def _candidate_score(candidate: _FonteCaloriasCandidate) -> float:
-    score = candidate.confianca
-    if candidate.calorias_kcal is not None:
-        score += 3.0
-    if candidate.proteina_g is not None:
-        score += 1.0
-    if candidate.carboidratos_g is not None:
-        score += 1.0
-    if candidate.lipidios_g is not None:
-        score += 1.0
-    if candidate.fonte == _FONTE_TACO:
-        score += 0.15
-    return score
-
-
-def _match_candidate_by_source(
-    candidates: list[_FonteCaloriasCandidate],
-    source: str | None,
-) -> _FonteCaloriasCandidate | None:
-    if source is None:
-        return None
-    for candidate in candidates:
-        if candidate.fonte == source:
-            return candidate
-    return None
-
-
-def _order_candidates(candidates: list[_FonteCaloriasCandidate]) -> list[_FonteCaloriasCandidate]:
-    order = {_FONTE_TACO: 0, _FONTE_OPEN_FOOD_FACTS: 1}
-    return sorted(candidates, key=lambda candidate: order.get(candidate.fonte, 99))
-
-
-def _normalize_source_name(value: Any) -> str | None:
-    raw = _to_optional_str(value)
-    if raw is None:
-        return None
-    normalized = raw.strip().lower().replace("-", "_").replace(" ", "_")
-    if normalized in {"tabela_taco_online", "taco", "taco_online"}:
-        return _FONTE_TACO
-    if normalized in {"open_food_facts", "off", "openfoodfacts"}:
-        return _FONTE_OPEN_FOOD_FACTS
-    return None
-
-
-def _extract_single_food_request(text: str) -> tuple[str, float] | None:
-    if ";" in text or "\n" in text:
-        return None
-    parsed = _extract_structured_food_request_from_segment(text)
-    if parsed is None:
-        return None
-    return parsed.food_query, parsed.grams
-
-
-def _extract_structured_food_requests(text: str) -> list[_StructuredFoodRequest] | None:
-    segments = _split_food_request_segments(text)
-    requests: list[_StructuredFoodRequest] = []
-    for segment in segments:
-        parsed = _extract_structured_food_request_from_segment(segment)
-        if parsed is None:
-            return None
-        requests.append(parsed)
-    return requests or None
-
-
-def _split_food_request_segments(text: str) -> list[str]:
-    normalized = text.strip()
-    if not normalized:
-        return []
-    parts = re.split(r";+|\n+|,(?=\s*\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b)", normalized)
-    segments = [_clean_segment_text(part) for part in parts]
-    return [segment for segment in segments if segment]
-
-
-def _clean_segment_text(segment: str) -> str:
-    return segment.strip().strip("-").strip("•").strip()
-
-
-def _extract_structured_food_request_from_segment(segment: str) -> _StructuredFoodRequest | None:
-    food_query = _extract_single_food_query(segment)
-    if not food_query:
-        return None
-    if _looks_like_multi_food_query(food_query):
-        return None
-    grams = _extract_grams(segment)
-    return _StructuredFoodRequest(
-        descricao_original=segment.strip(),
-        food_query=food_query,
-        grams=grams,
-    )
-
-
-def _normalize_structured_food_requests(items: list[dict[str, Any]]) -> list[_StructuredFoodRequest]:
-    requests: list[_StructuredFoodRequest] = []
-    for raw_item in items:
-        if not isinstance(raw_item, dict):
-            continue
-
-        food_query = _to_optional_str(
-            _first_present_value(
-                raw_item,
-                "food_query",
-                "consulta_canonica",
-                "canonical_query",
-                "alimento",
-                "nome_alimento",
-                "food",
-                "food_name",
-            )
-        )
-        if not food_query:
-            continue
-
-        grams = _to_optional_float(
-            _first_present_value(
-                raw_item,
-                "grams",
-                "gramas",
-                "quantidade_estimada_gramas",
-                "estimated_grams",
-                "quantidade_gramas",
-                "amount_grams",
-            )
-        )
-        if grams is None or grams <= 0:
-            continue
-
-        descricao_original = _to_optional_str(
-            _first_present_value(
-                raw_item,
-                "descricao_original",
-                "original_description",
-            )
-        ) or f"{_format_grams_text(grams)} de {food_query}"
-
-        requests.append(
-            _StructuredFoodRequest(
-                descricao_original=descricao_original,
-                food_query=food_query,
-                grams=grams,
-            )
-        )
-    return requests
-
-
-def _extract_single_food_query(prompt: str) -> str | None:
-    patterns = (
-        r"^\s*\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\s+de\s+(.+)$",
-        r"quantas?\s+calorias\s+tem\s+(?:o|a|os|as|um|uma)?\s*(.+)",
-        r"(?:calorias|macros?)\s+(?:de|do|da|dos|das)\s+(.+)",
-        r"(?:valor calorico)\s+(?:de|do|da)\s+(.+)",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, prompt, flags=re.IGNORECASE)
-        if match:
-            return _cleanup_food_phrase(match.group(1))
-
-    cleaned = _cleanup_food_phrase(prompt.strip(" ?!."))
-    if len(cleaned.split()) <= 5 and not re.search(r"\bcaloria|macro|proteina|carbo|gordura", cleaned.lower()):
-        return cleaned
-    return None
-
-
-def _cleanup_food_phrase(value: str) -> str:
-    cleaned = re.sub(r"\b(em|para)\s+\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", "", value, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"^(de|do|da|dos|das)\s+", "", cleaned, flags=re.IGNORECASE)
-    return " ".join(cleaned.split()).strip(" ,.;")
-
-
-def _extract_grams(prompt: str) -> float:
-    match_kg = re.search(r"(\d{1,3}(?:[.,]\d+)?)\s*kg\b", prompt, flags=re.IGNORECASE)
-    if match_kg:
-        return round(float(match_kg.group(1).replace(",", ".")) * 1000.0, 4)
-    match_g = re.search(r"(\d{1,4}(?:[.,]\d+)?)\s*g\b", prompt, flags=re.IGNORECASE)
-    if match_g:
-        return round(float(match_g.group(1).replace(",", ".")), 4)
-    match_l = re.search(r"(\d{1,3}(?:[.,]\d+)?)\s*l\b", prompt, flags=re.IGNORECASE)
-    if match_l:
-        return round(float(match_l.group(1).replace(",", ".")) * 1000.0, 4)
-    match_ml = re.search(r"(\d{1,4}(?:[.,]\d+)?)\s*ml\b", prompt, flags=re.IGNORECASE)
-    if match_ml:
-        return round(float(match_ml.group(1).replace(",", ".")), 4)
-    return 100.0
-
-
-def _contains_explicit_grams(prompt: str) -> bool:
-    return bool(re.search(r"\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l)\b", prompt, flags=re.IGNORECASE))
-
-
-def _format_grams_text(grams: float) -> str:
-    normalized = round(grams, 4)
-    if float(normalized).is_integer():
-        return f"{int(normalized)} g"
-    return f"{normalized} g"
-
-
-def _looks_like_multi_food_query(food_query: str) -> bool:
-    return bool(re.search(r"\be\b|,|\+|\bcom\b|\bjunto\b", food_query, flags=re.IGNORECASE))
-
-
-def _has_core_macros(
-    *,
-    energy: float | None,
-    protein: float | None,
-    carbs: float | None,
-    fat: float | None,
-) -> bool:
-    return any(value is not None for value in (energy, protein, carbs, fat))
-
-
-def _calculate_candidate_portion(candidate: _FonteCaloriasCandidate, *, grams: float) -> dict[str, float | None]:
-    return {
-        "calorias_kcal": _scale_from_100g(candidate.calorias_kcal_100g, grams, fallback=candidate.calorias_kcal),
-        "proteina_g": _scale_from_100g(candidate.proteina_g_100g, grams, fallback=candidate.proteina_g),
-        "carboidratos_g": _scale_from_100g(
-            candidate.carboidratos_g_100g,
-            grams,
-            fallback=candidate.carboidratos_g,
-        ),
-        "lipidios_g": _scale_from_100g(candidate.lipidios_g_100g, grams, fallback=candidate.lipidios_g),
-    }
-
-
-def _scale_from_100g(value: float | None, grams: float, *, fallback: float | None) -> float | None:
-    if value is None:
-        return fallback
-    return round(value * (grams / 100.0), 4)
-
