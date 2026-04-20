@@ -1,7 +1,7 @@
 import re
-import unicodedata
 from typing import Any
 
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.schemas import ItemAlimentarPlano, OpcaoRefeicaoPlano, RefeicaoPlano
 from vidasync_multiagents_ia.services.plano_alimentar_pipeline.preprocessor import is_noise_food_text
 
@@ -23,7 +23,7 @@ _TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3]):[0-5]\d\b")
 
 
 def extract_deterministic_meal_sections(texto: str) -> list[RefeicaoPlano]:
-    # /**** Converte texto normalizado em refeicoes estruturadas sem depender de LLM. ****/
+    # Converte texto normalizado em refeicoes estruturadas sem depender de LLM.
     linhas = _normalize_lines(texto)
     if not linhas:
         return []
@@ -125,7 +125,7 @@ def _parse_qtd_alimento_line(line: str) -> tuple[str, str] | None:
     if not quantidade:
         return None
     if not alimento:
-        # /**** Exige ALIMENTO explicito para reduzir ambiguidade em orientacoes. ****/
+        # Exige ALIMENTO explicito para reduzir ambiguidade em orientacoes.
         return None
     return quantidade, alimento
 
@@ -184,9 +184,7 @@ def _normalize_lines(texto: str) -> list[str]:
 
 
 def _normalize_for_match(text: str) -> str:
-    normalized = _fix_common_mojibake(text.strip().lower())
-    normalized = unicodedata.normalize("NFKD", normalized).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", normalized)
+    return normalize_pt_text(_fix_common_mojibake(text))
 
 
 def _fix_common_mojibake(text: str) -> str:

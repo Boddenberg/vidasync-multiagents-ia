@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -9,7 +8,7 @@ from openai import APIConnectionError, APIError
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.schemas import (
     AgentePorcoesTexto,
     FrasePorcoesResponse,
@@ -57,7 +56,7 @@ class FrasePorcoesService:
         idioma: str = "pt-BR",
         inferir_quando_ausente: bool = False,
     ) -> FrasePorcoesResponse:
-        # /**** Fluxo principal: extrai itens do texto e aplica inferencia opcional. ****/
+        # Fluxo principal: extrai itens do texto e aplica inferencia opcional.
         self._ensure_openai_api_key()
 
         texto = texto_transcrito.strip()
@@ -121,7 +120,7 @@ class FrasePorcoesService:
         idioma: str,
         inferir_quando_ausente: bool,
     ) -> dict[str, Any]:
-        # /**** Chamada LLM textual: retorna JSON estruturado de porcoes. ****/
+        # Chamada LLM textual: retorna JSON estruturado de porcoes.
         system_prompt = (
             "Voce e um agente de estruturacao de porcoes alimentares a partir de texto livre. "
             "Responda somente em JSON valido. "
@@ -164,7 +163,7 @@ class FrasePorcoesService:
         *,
         inferir_quando_ausente: bool,
     ) -> ResultadoPorcoesTexto:
-        # /**** Normaliza payload do LLM para o contrato canonico da API. ****/
+        # Normaliza payload do LLM para o contrato canonico da API.
         raw_items = payload.get("itens") or payload.get("items") or []
         itens: list[ItemPorcaoTexto] = []
 
@@ -221,7 +220,7 @@ class FrasePorcoesService:
         *,
         inferir_quando_ausente: bool,
     ) -> None:
-        # /**** Garante consistencia: media de faixa, inferencia e flags de revisao. ****/
+        # Garante consistencia: media de faixa, inferencia e flags de revisao.
         if item.quantidade_original:
             origem_deduzida = _deduzir_origem_por_texto(item.quantidade_original)
             if origem_deduzida == "inferida" and item.origem_quantidade == "informada":
@@ -453,9 +452,7 @@ def _gramas_por_colher(item: ItemPorcaoTexto) -> float:
 
 
 def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", ascii_text).strip()
+    return normalize_pt_text(text)
 
 
 def _to_optional_str(value: Any) -> str | None:

@@ -242,7 +242,7 @@ class OpenAIClient:
 
         file_id: str | None = None
         try:
-            # /**** Upload temporario do PDF para uso no Responses API. ****/
+            # Upload temporario do PDF para uso no Responses API.
             pdf_buffer = io.BytesIO(pdf_bytes)
             pdf_buffer.name = filename
             uploaded = self._client.files.create(
@@ -304,7 +304,7 @@ class OpenAIClient:
             raise
         finally:
             if file_id:
-                # /**** Limpeza best-effort do arquivo temporario no provedor. ****/
+                # Limpeza best-effort do arquivo temporario no provedor.
                 try:
                     self._client.files.delete(file_id)
                 except Exception:
@@ -345,7 +345,7 @@ class OpenAIClient:
 
         file_id: str | None = None
         try:
-            # /**** Upload temporario do PDF para uso no Responses API. ****/
+            # Upload temporario do PDF para uso no Responses API.
             pdf_buffer = io.BytesIO(pdf_bytes)
             pdf_buffer.name = filename
             uploaded = self._client.files.create(
@@ -664,7 +664,7 @@ def _extract_json_object(output_text: str) -> dict[str, Any]:
 
 
 def _resolve_error_status() -> str:
-    # /**** Mantem timeout separado de erro generico para metricas de troubleshooting. ****/
+    # Mantem timeout separado de erro generico para metricas de troubleshooting.
     import sys
 
     exc = sys.exc_info()[1]
@@ -743,7 +743,7 @@ def _convert_unsupported_image_for_openai(
     except Exception:
         return None
 
-    # /**** Registro lazy do plugin para abrir AVIF quando disponivel. ****/
+    # Registro lazy do plugin para abrir AVIF quando disponivel.
     if detected_format == "avif":
         try:
             __import__("pillow_avif")

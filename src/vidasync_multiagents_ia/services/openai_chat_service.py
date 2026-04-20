@@ -28,10 +28,8 @@ class OpenAIChatService:
         chat_orchestrator: ChatAiOrchestratorPort | None = None,
     ) -> None:
         self._settings = settings
-        # /****
-        #  * OpenAIChatService depende apenas da porta estavel de orquestracao.
-        #  * O wiring interno (intencao/router/memoria/engine) fica encapsulado no builder.
-        #  ****/
+        # OpenAIChatService depende apenas da porta estavel de orquestracao.
+        # O wiring interno (intencao/router/memoria/engine) fica encapsulado no builder.
         self._chat_orchestrator = chat_orchestrator or build_chat_ai_orchestrator(
             settings=settings,
             client=client,

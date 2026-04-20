@@ -47,7 +47,7 @@ class _ChatState(TypedDict, total=False):
 
 
 class LangGraphChatOrchestrator(AiOrchestrator):
-    # /**** Grafo base do chat conversacional: simples hoje, preparado para crescer por etapa. ****/
+    # Grafo base do chat conversacional: simples hoje, preparado para crescer por etapa.
     def __init__(
         self,
         *,
@@ -163,7 +163,7 @@ class LangGraphChatOrchestrator(AiOrchestrator):
             memoria=memoria_estado,
         )
 
-    # /**** Compatibilidade retroativa com chamadas antigas enquanto migramos consumidores. ****/
+    # Compatibilidade retroativa com chamadas antigas enquanto migramos consumidores.
     def execute_chat(self, *, request: AiOrchestratorRequest) -> AiOrchestratorResponse:
         return self.orchestrate_chat(request=request)
 
@@ -252,7 +252,7 @@ class LangGraphChatOrchestrator(AiOrchestrator):
         if route_result is None:
             raise ServiceError("Pipeline de chat nao retornou resultado.", status_code=502)
         etapas = list(state.get("etapas_executadas", []))
-        # /**** Ponto unico para futuras politicas de composicao (judge, guardrails, estilo de resposta). ****/
+        # Ponto unico para futuras politicas de composicao (judge, guardrails, estilo de resposta).
         response_final = route_result.response.strip()
         etapas.append("compor_resposta")
         durations = dict(state.get("stage_durations_ms", {}))

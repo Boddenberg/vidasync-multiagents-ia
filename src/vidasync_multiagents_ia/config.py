@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     rag_context_max_chars: int = 4000
     rag_embedding_provider: str = "auto"
     rag_embedding_model: str = "text-embedding-3-small"
+    rag_embedding_query_cache_ttl_seconds: float = 300.0
+    rag_embedding_query_cache_max_entries: int = 512
     chat_memory_enabled: bool = True
     chat_memory_max_turns_short_term: int = 8
     chat_memory_summary_max_chars: int = 1800
@@ -46,11 +48,19 @@ class Settings(BaseSettings):
     plano_pipeline_orchestrator_engine: str = "langgraph"
     chat_orchestrator_engine: str = "langgraph"
     debug_local_routes_enabled: bool = True
+    external_http_cache_ttl_seconds: float = 300.0
+    external_http_cache_max_entries: int = 256
+    external_http_circuit_failure_threshold: int = 5
+    external_http_circuit_recovery_seconds: float = 30.0
+    external_http_retry_max_attempts: int = 3
+    external_http_retry_base_delay_seconds: float = 0.5
+    external_http_retry_max_delay_seconds: float = 4.0
+    external_http_retry_jitter_factor: float = 0.25
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_env_values(cls, data: object) -> object:
-        # /**** Permite env vars com ou sem aspas (ex.: "true", "60", "valor"). ****/
+        # Permite env vars com ou sem aspas (ex.: "true", "60", "valor").
         if not isinstance(data, dict):
             return data
         return {key: _strip_wrapping_quotes(value) for key, value in data.items()}

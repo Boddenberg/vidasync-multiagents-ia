@@ -99,3 +99,15 @@ def test_chat_receitas_flow_service_aplica_fallback_no_perfil() -> None:
     assert any("Base RAG sem documentos" in warning for warning in output.warnings)
     assert len(output.metadados["receitas"]) == 1
 
+
+def test_chat_receitas_flow_service_fallback_reconhece_restricao_com_acento() -> None:
+    settings = Settings(openai_api_key="test-key", openai_model="gpt-4o-mini")
+    service = ChatReceitasFlowService(
+        settings=settings,
+        client=_FakeOpenAIClientFallbackProfile(),  # type: ignore[arg-type]
+        rag_context_builder=lambda _: ("", []),
+    )
+
+    output = service.executar(prompt="Quero receita sem açúcar em 20 min.")
+
+    assert "sem acucar" in output.metadados["perfil"]["restricoes"]

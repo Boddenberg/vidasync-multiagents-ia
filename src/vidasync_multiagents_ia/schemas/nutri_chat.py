@@ -1,8 +1,14 @@
-"""Schemas do chat conversacional de nutricao.
+"""Contratos da frente dedicada de chat nutricional."""
 
-Este modulo foi criado na etapa de estrutura minima. Os contratos
-serao adicionados na proxima etapa para manter a implementacao pequena
-e incremental.
-"""
+from vidasync_multiagents_ia.schemas.openai_chat import OpenAIChatRequest, OpenAIChatResponse
 
-__all__: list[str] = []
+
+class NutriChatRequest(OpenAIChatRequest):
+    """Mantem o mesmo contrato do chat atual para evitar duplicacao desnecessaria."""
+
+
+class NutriChatResponse(OpenAIChatResponse):
+    """Resposta da frente de chat dedicada a nutricao e alimentacao."""
+
+
+__all__ = ["NutriChatRequest", "NutriChatResponse"]

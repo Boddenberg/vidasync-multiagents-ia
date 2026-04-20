@@ -7,12 +7,85 @@ Backend FastAPI para orquestracao de agentes de IA focados em:
 - estruturacao de plano alimentar
 
 ## Status Atual
-- API funcional com rotas por dominio (`agentes`, `tbca`, `taco-online`, `system`).
+- API funcional com rotas por dominio (`agentes`, `tbca`, `taco-online`, `system`, `chat`).
 - Observabilidade completa: logs estruturados JSON/texto, request/response middleware, metricas.
 - Suite de testes automatizados cobrindo rotas, servicos e parsers.
+- `pytest -q` validado nesta branch com `168 passed`.
 
-## Nova Frente: Chat Conversacional De Nutricao
-Objetivo desta frente: abrir um chat conversacional focado apenas em nutricao e alimentacao dentro do contexto do app, sem criar uma segunda arquitetura paralela.
+## Programa De Hardening Da Branch
+Branch de trabalho: `codex/agent-platform-hardening`.
+
+### Resumo Executivo
+| Frente | Status | Entrega principal |
+|---|---|---|
+| Higiene de repositorio | `[done]` | `build/` removido do versionamento e `.gitignore` reforcado |
+| Determinismo de calorias | `[done]` | ordem de processamento estabilizada no fluxo estruturado |
+| RAG nutricional | `[done]` | JSONs estruturados grandes agora entram no indice em lotes recuperaveis |
+| Frente de chat nutricional | `[done]` | `POST /v1/nutri/chat` implementado sem duplicar a arquitetura do chat |
+| AI Router interno | `[done]` | contexts documentados agora estao realmente roteaveis |
+| Robustez de entrada | `[done]` | texto acentuado passou a ser tratado com mais tolerancia em chat/router |
+| Persistencia de memoria e execucoes | `[next]` | ainda em memoria; maior gap para producao real |
+| Evals e regressao de agentes | `[next]` | falta suite dedicada para roteamento, retrieval e grounding |
+| Consolidacao arquitetural | `[next]` | coexistencia de engine nova e legado ainda pede limpeza |
+
+### Planos Executados Nesta Branch
+#### 1. Higiene de repositorio
+1. Identificar artefatos gerados que estavam no git.
+2. Remover `build/` do versionamento.
+3. Blindar `.gitignore` para `build/`, `.chroma/` e `supabase/.temp/`.
+4. Validar a base antes das mudancas funcionais.
+
+#### 2. Determinismo do fluxo de calorias
+1. Mapear o ponto de nao determinismo no lote estruturado.
+2. Trocar a coleta da camada externa para uma ordem estavel.
+3. Preservar o paralelismo interno das consultas por fonte.
+4. Validar com testes dedicados do `CaloriasTextoService`.
+
+#### 3. Ingestao RAG de catalogos estruturados
+1. Auditar formatos reais em `knowledge/`.
+2. Ensinar o loader a ler `items` e `serverData`.
+3. Transformar catalogos grandes em batches textuais recuperaveis.
+4. Cobrir os formatos novos com testes.
+
+#### 4. Frente dedicada `nutri_chat`
+1. Criar contrato proprio reaproveitando o schema do chat atual.
+2. Implementar `NutriChatService` como camada fina com guard-rail de dominio.
+3. Expor `POST /v1/nutri/chat` e registrar no router principal.
+4. Cobrir rota e service com testes.
+
+#### 5. Alinhamento do `AI Router` ao contrato documentado
+1. Comparar `docs/CONTRATOS_ARQUITETURA_ALVO.md` com os contexts reais do codigo.
+2. Ligar no roteador os services que ja existiam (`TBCA`, `TACO`, OCR imagem, normalizacao, plano, porcoes).
+3. Adicionar validacoes e warnings coerentes por contexto.
+4. Cobrir os contexts novos com testes de contrato do router.
+
+#### 6. Robustez de entrada e texto acentuado
+1. Normalizar booleanos textuais no `AI Router`.
+2. Tornar o fallback de receitas tolerante a acentos.
+3. Adicionar testes de regressao para `"não"` e `"sem açúcar"`.
+4. Revalidar os fluxos afetados.
+
+### Planos Recomendados Para a Proxima Onda
+#### 7. Persistencia de memoria e execucoes
+1. Trocar memoria conversacional in-memory por store persistente.
+2. Persistir `trace_id`, contexto, status e payload resumido de execucao.
+3. Criar capacidade de replay/debug de requests criticas.
+4. Definir TTL, custo e estrategia de limpeza.
+
+#### 8. Suite de evals para agentes
+1. Montar corpus de prompts reais por intencao/contexto.
+2. Medir acuracia de roteamento e cobertura de fallback.
+3. Medir retrieval, grounding e warnings falsos/uteis.
+4. Colocar regressao automatizada no CI.
+
+#### 9. Consolidacao arquitetural
+1. Eleger a trilha oficial entre legado e engine atual onde ainda houver duplicidade.
+2. Quebrar services muito grandes em modulos menores e testaveis.
+3. Revisar fronteiras entre router, flow e tool para reduzir sobreposicao.
+4. Documentar claramente o caminho recomendado de extensao.
+
+## Frente Nutri Chat (Implementada)
+Esta frente foi implementada nesta branch para abrir um chat conversacional focado em nutricao e alimentacao sem criar uma segunda arquitetura paralela.
 
 ### Mapa Rapido
 | Bloco | Direcao recomendada |
@@ -255,6 +328,7 @@ uvicorn vidasync_multiagents_ia.main:app --reload
 ### Orquestracao/Base
 - `POST /orchestrate`
 - `POST /v1/openai/chat` (inclui `intencao_detectada` + `roteamento` por pipeline)
+- `POST /v1/nutri/chat` (frente dedicada com guard-rail de dominio nutricional)
 - `POST /ai/router` (interno, roteamento por `contexto`)
 
 ### Agentes De Texto/Plano
@@ -336,6 +410,13 @@ curl --request POST "http://127.0.0.1:8000/ai/router" \
 curl --request POST "http://127.0.0.1:8000/v1/openai/chat" \
   --header "Content-Type: application/json" \
   --data "{\"prompt\":\"Registrar refeicao por foto\",\"refeicao_anexo\":{\"tipo_fonte\":\"imagem\",\"imagem_url\":\"https://example.com/prato.jpg\"}}"
+```
+
+### Nutri Chat Dedicado
+```bash
+curl --request POST "http://127.0.0.1:8000/v1/nutri/chat" \
+  --header "Content-Type: application/json" \
+  --data "{\"prompt\":\"Quero uma sugestao de jantar com mais proteina\",\"conversation_id\":\"conv-nutri-1\"}"
 ```
 
 ## Deteccao e roteamento de intencao no chat (novo)
@@ -594,6 +675,7 @@ ruff check src tests
 ```
 
 ### Cobertura atual
+- `168` testes passando em `pytest -q` nesta branch
 - testes de rotas (HTTP)
 - testes de servicos (regras de negocio)
 - testes de parsers/preprocessamento (plano alimentar)
@@ -608,6 +690,12 @@ ruff check src tests
 - Suites de teste e lint passando.
 
 ### Ajustes aplicados na auditoria
+- Remocao de artefatos gerados do versionamento e endurecimento do `.gitignore`.
+- Estabilizacao do fluxo estruturado de calorias para evitar ordem nao deterministica.
+- Ingestao RAG de JSONs estruturados em lote para aproveitar melhor `knowledge/`.
+- Implementacao da frente dedicada `POST /v1/nutri/chat`.
+- Alinhamento do `POST /ai/router` com os contexts do contrato alvo.
+- Normalizacao de entradas acentuadas em caminhos criticos de chat.
 - Refino do merge de refeicoes para evitar ruido heuristico duplicado quando ja existe secao valida.
 - Sanitizacao extra para remover labels invalidos em itens de refeicao.
 - Melhor robustez de normalizacao de heading com tratamento de mojibake.

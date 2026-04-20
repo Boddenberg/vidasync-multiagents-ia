@@ -36,7 +36,7 @@ class ImagemTextoService:
         contexto: str = "transcrever_texto_imagem",
         idioma: str = "pt-BR",
     ) -> ImagemTextoResponse:
-        # /**** Agente OCR em lote: processa varias imagens em paralelo. ****/
+        # Agente OCR em lote: processa varias imagens em paralelo.
         self._ensure_openai_api_key()
         if not imagem_urls:
             raise ServiceError("Campo 'imagem_urls' e obrigatorio.", status_code=400)
@@ -63,7 +63,7 @@ class ImagemTextoService:
             "Se nao houver texto legivel, retorne string vazia."
         )
 
-        # /**** ThreadPool para paralelizar chamadas sincrona do client OpenAI. ****/
+        # ThreadPool para paralelizar chamadas sincrona do client OpenAI.
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
                 submit_with_context(
@@ -127,7 +127,7 @@ class ImagemTextoService:
                 texto_transcrito=texto,
             )
         except (APIConnectionError, APIError, ValueError) as exc:
-            # /**** Erro por item nao derruba o lote inteiro. ****/
+            # Erro por item nao derruba o lote inteiro.
             self._logger.exception("Falha ao transcrever imagem '%s'", imagem_url)
             return ImagemTextoItemResponse(
                 imagem_url=imagem_url,

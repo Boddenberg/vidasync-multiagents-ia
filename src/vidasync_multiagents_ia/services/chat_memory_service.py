@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol
 
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.schemas import ChatMemoriaEstado, ChatPipelineNome, IntencaoChatNome
@@ -35,23 +35,39 @@ class _ConversationMemory:
     metadata: dict[str, str] = field(default_factory=dict)
 
 
-class ChatMemoryService:
-    """
-    /****
-     * Gerencia memoria conversacional controlada em memoria:
-     * - curto prazo: ultimos turnos (janela deslizante)
-     * - longo prazo leve: resumo acumulado dos turnos antigos
-     * - metadados: dados de conversa para rastreabilidade
-     *
-     * Observacao de manutencao:
-     * Esta versao e in-memory e nao persiste entre reinicios.
-     * Para producao horizontal, trocar storage mantendo o mesmo contrato.
-     ****/
-    """
+class ChatMemoryStore(Protocol):
+    def get(self, conversation_id: str) -> _ConversationMemory | None:
+        ...
 
-    def __init__(self, *, settings: Settings) -> None:
-        self._settings = settings
+    def save(self, convo: _ConversationMemory) -> None:
+        ...
+
+
+class InMemoryChatMemoryStore:
+    def __init__(self) -> None:
         self._conversations: dict[str, _ConversationMemory] = {}
+
+    def get(self, conversation_id: str) -> _ConversationMemory | None:
+        return self._conversations.get(conversation_id)
+
+    def save(self, convo: _ConversationMemory) -> None:
+        self._conversations[convo.conversation_id] = convo
+
+
+class ChatMemoryService:
+    # Gerencia memoria conversacional com curto-prazo (janela deslizante),
+    # resumo acumulado de turnos antigos e metadados da conversa. A camada
+    # de persistencia e abstraida via ChatMemoryStore; o default in-memory
+    # nao sobrevive a reinicios.
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        store: ChatMemoryStore | None = None,
+    ) -> None:
+        self._settings = settings
+        self._store: ChatMemoryStore = store or InMemoryChatMemoryStore()
         self._lock = Lock()
         self._logger = logging.getLogger(__name__)
 
@@ -78,6 +94,7 @@ class ChatMemoryService:
         with self._lock:
             convo = self._get_or_create(conversation_id=conversation_id)
             self._merge_metadata(convo=convo, input_metadata=metadados_conversa or {})
+            self._store.save(convo)
             context_text, limit_applied = self._build_context_text(convo=convo)
             estado = self._to_estado(
                 convo=convo,
@@ -117,6 +134,7 @@ class ChatMemoryService:
             convo.updated_at = now
 
             compacted = self._compact_short_term(convo=convo)
+            self._store.save(convo)
             context_text, context_limited = self._build_context_text(convo=convo)
             estado = self._to_estado(
                 convo=convo,
@@ -139,7 +157,7 @@ class ChatMemoryService:
             return estado
 
     def _get_or_create(self, *, conversation_id: str) -> _ConversationMemory:
-        convo = self._conversations.get(conversation_id)
+        convo = self._store.get(conversation_id)
         if convo is not None:
             return convo
         now = datetime.now(timezone.utc)
@@ -148,7 +166,7 @@ class ChatMemoryService:
             created_at=now,
             updated_at=now,
         )
-        self._conversations[conversation_id] = convo
+        self._store.save(convo)
         return convo
 
     def _merge_metadata(self, *, convo: _ConversationMemory, input_metadata: dict[str, Any]) -> None:

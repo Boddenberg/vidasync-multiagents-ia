@@ -134,7 +134,7 @@ class _MetricsStore:
             self._ai_router_timeouts[contexto] += 1
 
     def render_prometheus(self) -> str:
-        # /**** Formato Prometheus para troubleshooting operacional local e integracao com dashboards. ****/
+        # Formato Prometheus para troubleshooting operacional local e integracao com dashboards.
         with self._lock:
             lines: list[str] = []
 

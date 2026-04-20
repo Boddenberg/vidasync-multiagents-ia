@@ -10,11 +10,11 @@ from vidasync_multiagents_ia.rag.context_builder import RagContextBuilder
 from vidasync_multiagents_ia.rag.embeddings import TextEmbedder, build_text_embedder
 from vidasync_multiagents_ia.rag.loaders import NutritionKnowledgeLoader
 from vidasync_multiagents_ia.rag.models import RagIngestionSummary
-from vidasync_multiagents_ia.rag.vector_index import InMemoryVectorIndex
+from vidasync_multiagents_ia.rag.vector_index import InMemoryVectorIndex, VectorIndex
 
 
 class NutritionRagService:
-    # /**** Orquestra ingestao e retrieval de RAG sem acoplar com endpoint ou LangGraph. ****/
+    # Orquestra ingestao e retrieval de RAG sem acoplar com endpoint ou LangGraph.
     def __init__(
         self,
         *,
@@ -22,7 +22,7 @@ class NutritionRagService:
         loader: NutritionKnowledgeLoader | None = None,
         chunker: SlidingWindowChunker | None = None,
         embedder: TextEmbedder | None = None,
-        index: InMemoryVectorIndex | None = None,
+        index: VectorIndex | None = None,
         context_builder: RagContextBuilder | None = None,
     ) -> None:
         self._settings = settings
@@ -54,7 +54,6 @@ class NutritionRagService:
                 self._logger.info(
                     "rag.ingest.skipped",
                     extra={
-                        "emoji": "⏭️",
                         "docs_dir": self._settings.vidasync_docs_dir,
                         "force_rebuild": force_rebuild,
                         "total_sources": self._last_summary.total_sources,
@@ -68,7 +67,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.started",
                 extra={
-                    "emoji": "📚",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "force_rebuild": force_rebuild,
                     "chunk_size": self._chunker.chunk_size,
@@ -80,7 +78,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.loaded_sources",
                 extra={
-                    "emoji": "📄",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "total_sources": len(sources),
                 },
@@ -89,7 +86,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.chunked",
                 extra={
-                    "emoji": "✂️",
                     "total_sources": len(sources),
                     "total_chunks": len(chunks),
                 },
@@ -98,7 +94,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.embeddings.completed",
                 extra={
-                    "emoji": "🧠",
                     "embedder": self._embedder.name,
                     "embeddings_count": len(embeddings),
                     "embedding_dimensions": len(embeddings[0]) if embeddings else 0,
@@ -108,7 +103,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.index.completed",
                 extra={
-                    "emoji": "🗂️",
                     "indexed_chunks": len(chunks),
                     "vector_dimensions": self._index.dimensions,
                 },
@@ -123,7 +117,6 @@ class NutritionRagService:
             self._logger.info(
                 "rag.ingest.completed",
                 extra={
-                    "emoji": "✅",
                     "docs_dir": self._settings.vidasync_docs_dir,
                     "total_sources": len(sources),
                     "total_chunks": len(chunks),

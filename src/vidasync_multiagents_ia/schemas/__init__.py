@@ -56,15 +56,12 @@ from vidasync_multiagents_ia.schemas.openai_chat import (
     OpenAIChatRequest,
     OpenAIChatResponse,
 )
+from vidasync_multiagents_ia.schemas.nutri_chat import NutriChatRequest, NutriChatResponse
 from vidasync_multiagents_ia.schemas.open_food_facts import (
     OpenFoodFactsNutrients,
     OpenFoodFactsProduct,
     OpenFoodFactsSearchRequest,
     OpenFoodFactsSearchResponse,
-)
-from vidasync_multiagents_ia.schemas.orchestrator import (
-    OrchestrateRequest,
-    OrchestrateResponse,
 )
 from vidasync_multiagents_ia.schemas.pdf_texto import (
     AgenteTranscricaoPdf,
@@ -141,6 +138,8 @@ __all__ = [
     "ImagemTextoResponse",
     "OpenAIChatRequest",
     "OpenAIChatResponse",
+    "NutriChatRequest",
+    "NutriChatResponse",
     "OpenFoodFactsNutrients",
     "OpenFoodFactsProduct",
     "OpenFoodFactsSearchRequest",
@@ -184,8 +183,6 @@ __all__ = [
     "FotoCaloriasPipelineTesteRequest",
     "FotoCaloriasPipelineTesteResponse",
     "FotoCaloriasPipelineTesteTemposMs",
-    "OrchestrateRequest",
-    "OrchestrateResponse",
     "AgenteTranscricaoPdf",
     "PdfTextoResponse",
     "AgenteNormalizacaoPlanoTexto",

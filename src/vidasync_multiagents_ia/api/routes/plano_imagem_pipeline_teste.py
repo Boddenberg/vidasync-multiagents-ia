@@ -15,7 +15,7 @@ def pipeline_plano_imagem(
     payload: PlanoImagemPipelineTesteRequest,
     service: PlanoImagemPipelineTesteService = Depends(get_plano_imagem_pipeline_teste_service),
 ) -> PlanoImagemPipelineTesteResponse:
-    # /**** Endpoint temporario para testes locais (facil remover depois). ****/
+    # Endpoint temporario para testes locais (facil remover depois).
     return service.executar_pipeline(
         imagem_url=payload.imagem_url,
         contexto=payload.contexto,

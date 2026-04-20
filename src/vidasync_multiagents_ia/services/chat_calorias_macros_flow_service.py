@@ -33,18 +33,16 @@ class ChatCaloriasMacrosFlowOutput:
 
 
 class ChatCaloriasMacrosFlowService:
-    # /****
-    #  * Fluxo dedicado para calorias/macros no chat conversacional.
-    #  *
-    #  * Roteamento interno:
-    #  * - explicacao conceitual -> tool contextual de conhecimento nutricional
-    #  * - alimento unico -> base estruturada (TBCA/TACO), com fallback para tool
-    #  * - refeicao/combinacao -> tool de calorias/macros
-    #  *
-    #  * Evita duplicacao:
-    #  * - reaproveita TBCAService/TacoOnlineService para base estruturada
-    #  * - reaproveita ChatToolExecutor para calculo e contextualizacao
-    #  ****/
+    # Fluxo dedicado para calorias/macros no chat conversacional.
+    #
+    # Roteamento interno:
+    # - explicacao conceitual -> tool contextual de conhecimento nutricional
+    # - alimento unico -> base estruturada (TBCA/TACO), com fallback para tool
+    # - refeicao/combinacao -> tool de calorias/macros
+    #
+    # Evita duplicacao:
+    # - reaproveita TBCAService/TacoOnlineService para base estruturada
+    # - reaproveita ChatToolExecutor para calculo e contextualizacao
 
     def __init__(
         self,

@@ -1,9 +1,8 @@
 import logging
 import re
-import unicodedata
 
 from vidasync_multiagents_ia.clients import TBCAClient, TBCAClientError
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.schemas import (
     TBCAFoodCandidate,
     TBCAFoodSelection,
@@ -189,10 +188,7 @@ class TBCAService:
 
 
 def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text)
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    compact = re.sub(r"\s+", " ", ascii_text.lower()).strip()
-    return compact
+    return normalize_pt_text(text)
 
 
 def _parse_brazilian_number(value: str) -> float | None:

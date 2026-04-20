@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 
 from vidasync_multiagents_ia.clients import OpenAIClient
 from vidasync_multiagents_ia.config import Settings
-from vidasync_multiagents_ia.core import ServiceError
+from vidasync_multiagents_ia.core import ServiceError, normalize_pt_text
 from vidasync_multiagents_ia.observability import record_chat_rag_usage
 from vidasync_multiagents_ia.rag.vector_store import build_context_for_query
 
@@ -210,9 +210,9 @@ def _normalize_profile(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
-    lower = prompt.lower()
+    lower = _normalize_match_text(prompt)
     restricoes: list[str] = []
-    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar", "sem aÃ§Ãºcar"):
+    for termo in ("sem lactose", "sem gluten", "vegano", "vegetariano", "sem acucar"):
         if termo in lower:
             restricoes.append(termo)
     objetivo = None
@@ -235,6 +235,10 @@ def _extract_profile_fallback(prompt: str) -> dict[str, Any]:
         "tempo_max_preparo_min": tempo,
         "observacoes_usuario": None,
     }
+
+
+def _normalize_match_text(value: str) -> str:
+    return normalize_pt_text(value)
 
 
 def _build_rag_query(*, prompt: str, profile: dict[str, Any]) -> str:

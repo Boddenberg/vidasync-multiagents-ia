@@ -37,6 +37,6 @@ class ChatToolExecutionOutput:
 class ChatTool(Protocol):
     name: ChatToolName
 
-    # /**** Contrato padrao de tool: entrada textual + contexto e saida estruturada para o roteador. ****/
+    # Contrato padrao de tool: entrada textual + contexto e saida estruturada para o roteador.
     def execute(self, *, data: ChatToolExecutionInput) -> ChatToolExecutionOutput:
         ...

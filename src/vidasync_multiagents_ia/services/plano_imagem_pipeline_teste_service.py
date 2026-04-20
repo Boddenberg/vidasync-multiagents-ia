@@ -19,7 +19,7 @@ from vidasync_multiagents_ia.services.plano_texto_normalizado_service import (
 
 
 class PlanoImagemPipelineTesteService:
-    # /**** Endpoint temporario de debug local: une 3 agentes em um fluxo unico. ****/
+    # Endpoint temporario de debug local: une 3 agentes em um fluxo unico.
     def __init__(
         self,
         settings: Settings,
@@ -87,7 +87,7 @@ class PlanoImagemPipelineTesteService:
             )
             score_ocr = _score_normalized_text(texto_normalizado_ocr.texto_normalizado)
 
-            # /**** Fallback defensivo: se OCR vier pobre para tabela, reaproveita leitura semantica por imagem. ****/
+            # Fallback defensivo: se OCR vier pobre para tabela, reaproveita leitura semantica por imagem.
             if score_ocr < 2:
                 texto_normalizado_img = self._normalizacao_service.normalizar_de_imagens(
                     imagem_urls=[imagem_url],
@@ -183,7 +183,7 @@ class PlanoImagemPipelineTesteService:
             },
         )
 
-        # /**** Log opcional para copia/cola direta do JSON da etapa. ****/
+        # Log opcional para copia/cola direta do JSON da etapa.
         self._logger.info(
             "pipeline_teste_local.step.copy_json",
             extra={

@@ -33,18 +33,16 @@ class AiOrchestratorResponse:
 
 
 class AiOrchestrator(Protocol):
-    # /****
-    #  * Interface publica estavel de orquestracao de chat.
-    #  *
-    #  * Objetivo:
-    #  * - esconder detalhes de engine (LangGraph/legacy), tools e RAG
-    #  * - permitir evolucao interna sem quebrar consumidores
-    #  ****/
+    # Interface publica estavel de orquestracao de chat.
+    #
+    # Objetivo:
+    # - esconder detalhes de engine (LangGraph/legacy), tools e RAG
+    # - permitir evolucao interna sem quebrar consumidores
     def orchestrate_chat(self, *, request: AiOrchestratorRequest) -> AiOrchestratorResponse:
         ...
 
 
-# /**** Aliases de compatibilidade para nao quebrar codigo legado no projeto. ****/
+# Aliases de compatibilidade para nao quebrar codigo legado no projeto.
 ChatExecutionInput = AiOrchestratorRequest
 ChatExecutionOutput = AiOrchestratorResponse
 ChatAiOrchestrator = AiOrchestrator

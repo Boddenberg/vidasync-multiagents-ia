@@ -40,7 +40,7 @@ def submit_with_context(
     *args: Any,
     **kwargs: Any,
 ) -> Future[_T]:
-    # /**** Copia request_id/trace_id para tasks paralelas executadas em outras threads. ****/
+    # Copia request_id/trace_id para tasks paralelas executadas em outras threads.
     context = copy_context()
     return executor.submit(_run_in_context, context, func, args, kwargs)
 

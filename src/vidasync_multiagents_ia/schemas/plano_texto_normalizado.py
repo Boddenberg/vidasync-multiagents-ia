@@ -25,7 +25,7 @@ class PlanoTextoNormalizadoImagemRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_input(self) -> "PlanoTextoNormalizadoImagemRequest":
-        # /**** Aceita imagem unica ou lista e remove duplicadas/vazias. ****/
+        # Aceita imagem unica ou lista e remove duplicadas/vazias.
         normalized_list = [url.strip() for url in self.imagem_urls if url and url.strip()]
         if self.imagem_url and self.imagem_url.strip():
             normalized_list.insert(0, self.imagem_url.strip())

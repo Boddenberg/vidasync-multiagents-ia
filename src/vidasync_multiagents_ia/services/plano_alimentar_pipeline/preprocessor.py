@@ -1,7 +1,7 @@
 import re
-import unicodedata
 from dataclasses import dataclass, field
 
+from vidasync_multiagents_ia.core import normalize_pt_text
 from vidasync_multiagents_ia.schemas import ItemAlimentarPlano, OpcaoRefeicaoPlano
 
 _REFEICAO_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -96,7 +96,7 @@ class PlanoAlimentarPreprocessor:
         for linha in linhas:
             nome_detectado = _detect_refeicao_heading(linha)
             if nome_detectado:
-                # /**** Suporta lista de titulos consecutivos (ex.: Cafe/Lanche/Ceia) antes das opcoes. ****/
+                # Suporta lista de titulos consecutivos (ex.: Cafe/Lanche/Ceia) antes das opcoes.
                 if secoes_pendentes and secoes_pendentes_com_conteudo:
                     secoes_pendentes = [nome_detectado]
                     secoes_pendentes_com_conteudo = False
@@ -286,9 +286,7 @@ def _extrair_alimentos_da_linha(linha: str) -> list[str]:
 
 
 def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", ascii_text).strip()
+    return normalize_pt_text(text)
 
 
 def _to_optional_float(value: str | None) -> float | None:

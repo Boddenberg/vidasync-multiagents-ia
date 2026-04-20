@@ -16,7 +16,7 @@ from vidasync_multiagents_ia.services.orchestration import (
 
 
 class PlanoPipelineE2ETesteService:
-    # /**** Endpoint TEMPORARIO: facade estavel para trocar engine (legacy/langgraph) sem mudar API. ****/
+    # Endpoint TEMPORARIO: facade estavel para trocar engine (legacy/langgraph) sem mudar API.
     def __init__(
         self,
         settings: Settings,

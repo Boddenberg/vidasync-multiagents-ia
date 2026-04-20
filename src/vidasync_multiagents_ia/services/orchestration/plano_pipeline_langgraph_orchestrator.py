@@ -41,7 +41,7 @@ class _PlanoPipelineState(TypedDict, total=False):
 
 
 class LangGraphPlanoPipelineOrchestrator(AiOrchestrator):
-    # /**** Engine LangGraph (piloto): aplica grafo apenas no pipeline de plano alimentar. ****/
+    # Engine LangGraph (piloto): aplica grafo apenas no pipeline de plano alimentar.
     def __init__(
         self,
         *,

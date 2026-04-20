@@ -102,6 +102,6 @@ class PdfTextoService:
 
 
 def _is_pdf_bytes(file_bytes: bytes) -> bool:
-    # /**** Validacao minima do cabecalho PDF para evitar enviar arquivo errado ao provedor. ****/
+    # Validacao minima do cabecalho PDF para evitar enviar arquivo errado ao provedor.
     return file_bytes.startswith(b"%PDF-")
 
