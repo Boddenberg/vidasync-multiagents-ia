@@ -8,7 +8,15 @@ import uvicorn
 from vidasync_multiagents_ia.api import api_router
 from vidasync_multiagents_ia.config import get_settings
 from vidasync_multiagents_ia.core import ServiceError
-from vidasync_multiagents_ia.observability import log_request_response, setup_logging
+from vidasync_multiagents_ia.core.rate_limit import (
+    InMemoryTokenBucketRateLimiter,
+    TokenBucketConfig,
+)
+from vidasync_multiagents_ia.observability import (
+    apply_rate_limit,
+    log_request_response,
+    setup_logging,
+)
 
 settings = get_settings()
 setup_logging(level=settings.log_level, fmt=settings.log_format, json_pretty=settings.log_json_pretty)
@@ -16,6 +24,16 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VidaSync Multiagents IA", version="0.1.0")
 app.include_router(api_router)
+
+_rate_limiter = InMemoryTokenBucketRateLimiter(
+    TokenBucketConfig(
+        capacity=settings.rate_limit_capacity,
+        refill_per_second=settings.rate_limit_refill_per_second,
+    )
+)
+_rate_limit_exempt_paths = tuple(
+    path.strip() for path in (settings.rate_limit_exempt_paths or "").split(",") if path.strip()
+)
 
 
 @app.middleware("http")
@@ -28,6 +46,18 @@ async def http_logging_middleware(request: Request, call_next):
         log_headers=settings.log_http_headers,
         metrics_enabled=settings.metrics_enabled,
         response_exclude_none=settings.response_exclude_none,
+    )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if not settings.rate_limit_enabled:
+        return await call_next(request)
+    return await apply_rate_limit(
+        request,
+        call_next,
+        limiter=_rate_limiter,
+        exempt_paths=_rate_limit_exempt_paths,
     )
 
 

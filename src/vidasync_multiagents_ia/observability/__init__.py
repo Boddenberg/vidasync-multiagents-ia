@@ -1,5 +1,6 @@
 from vidasync_multiagents_ia.observability.http_logging import log_request_response
 from vidasync_multiagents_ia.observability.logging_setup import setup_logging
+from vidasync_multiagents_ia.observability.rate_limit_middleware import apply_rate_limit
 from vidasync_multiagents_ia.observability.metrics import (
     record_ai_router_request,
     record_ai_router_timeout,
@@ -28,6 +29,7 @@ from vidasync_multiagents_ia.observability.payload_preview import (
 __all__ = [
     "setup_logging",
     "log_request_response",
+    "apply_rate_limit",
     "record_http_request",
     "record_http_timeout",
     "record_chat_flow_execution",

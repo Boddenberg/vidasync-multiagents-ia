@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     external_http_retry_base_delay_seconds: float = 0.5
     external_http_retry_max_delay_seconds: float = 4.0
     external_http_retry_jitter_factor: float = 0.25
+    rate_limit_enabled: bool = True
+    rate_limit_capacity: float = 60
+    rate_limit_refill_per_second: float = 1.0
+    rate_limit_exempt_paths: str = "/health,/ready,/metrics"
 
     @model_validator(mode="before")
     @classmethod
