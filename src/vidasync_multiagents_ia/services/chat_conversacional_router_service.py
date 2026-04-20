@@ -235,7 +235,7 @@ class ChatConversacionalRouterService:
                 payload.metadados["intencao_forcada_por_anexo"] = True
                 payload.metadados["motivo_forcamento_anexo"] = motivo_forcamento_anexo
             record_chat_stage_duration(
-                engine=self._settings.chat_orchestrator_engine,
+                engine="langgraph",
                 stage=f"router.{handler.nome_handler}",
                 status=payload.status,
                 duration_ms=handler_duration_ms,
@@ -255,7 +255,7 @@ class ChatConversacionalRouterService:
                 },
             )
             record_chat_stage_duration(
-                engine=self._settings.chat_orchestrator_engine,
+                engine="langgraph",
                 stage=f"router.{handler.nome_handler}",
                 status="erro",
                 duration_ms=handler_duration_ms,

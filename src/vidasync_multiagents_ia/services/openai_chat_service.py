@@ -96,7 +96,7 @@ class OpenAIChatService:
             )
             record_chat_flow_execution(
                 flow="chat_conversacional",
-                engine=self._settings.chat_orchestrator_engine,
+                engine="langgraph",
                 intencao="indefinida",
                 pipeline="indefinido",
                 handler="indefinido",
@@ -134,7 +134,7 @@ class OpenAIChatService:
         )
         record_chat_flow_execution(
             flow="chat_conversacional",
-            engine=self._settings.chat_orchestrator_engine,
+            engine="langgraph",
             intencao=output.intencao.intencao,
             pipeline=output.roteamento.pipeline,
             handler=output.roteamento.handler,

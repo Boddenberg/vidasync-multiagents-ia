@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 60.0
     plano_alimentar_refeicoes_second_pass_enabled: bool = False
     plano_pipeline_orchestrator_engine: str = "langgraph"
-    chat_orchestrator_engine: str = "langgraph"
     debug_local_routes_enabled: bool = True
     external_http_cache_ttl_seconds: float = 300.0
     external_http_cache_max_entries: int = 256
@@ -56,6 +55,10 @@ class Settings(BaseSettings):
     external_http_retry_base_delay_seconds: float = 0.5
     external_http_retry_max_delay_seconds: float = 4.0
     external_http_retry_jitter_factor: float = 0.25
+    rate_limit_enabled: bool = True
+    rate_limit_capacity: float = 60
+    rate_limit_refill_per_second: float = 1.0
+    rate_limit_exempt_paths: str = "/health,/ready,/metrics"
 
     @model_validator(mode="before")
     @classmethod
