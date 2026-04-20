@@ -1,7 +1,7 @@
+import base64
 import io
 import json
 import logging
-import base64
 import urllib.request
 from time import perf_counter
 from typing import Any

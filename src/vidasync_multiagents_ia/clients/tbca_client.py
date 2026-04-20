@@ -1,6 +1,6 @@
 import logging
-from time import perf_counter, sleep
 from html.parser import HTMLParser
+from time import perf_counter, sleep
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen

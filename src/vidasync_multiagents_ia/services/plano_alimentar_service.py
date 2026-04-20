@@ -27,17 +27,32 @@ from vidasync_multiagents_ia.schemas import (
 )
 from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     dedupe_strings as _dedupe_strings,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     extrair_bullets as _extrair_bullets,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     extrair_doses_suplementos as _extrair_doses_suplementos,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     inferir_objetivos_basicos as _inferir_objetivos_basicos,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     is_invalid_food_label as _is_invalid_food_label,
-    is_orientacao_relevante as _is_orientacao_relevante,
-    is_orientacao_ruido as _is_orientacao_ruido,
-    is_qtd_alimento_line as _is_qtd_alimento_line,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     normalizar_nome as _normalizar_nome,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     sanitizar_orientacoes as _sanitizar_orientacoes,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     to_list_str as _to_list_str,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     to_optional_float as _to_optional_float,
+)
+from vidasync_multiagents_ia.services.plano_alimentar_parsing import (
     to_optional_str as _to_optional_str,
 )
 from vidasync_multiagents_ia.services.plano_alimentar_pipeline import (

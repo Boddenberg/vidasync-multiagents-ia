@@ -12,15 +12,29 @@ from vidasync_multiagents_ia.observability.payload_preview import preview_json
 from vidasync_multiagents_ia.schemas import AIRouterRequest, AIRouterResponse
 from vidasync_multiagents_ia.services.ai_router_helpers import (
     collect_text_values as _collect_text_values,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     decode_base64_file as _decode_base64_file,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     dedupe_strings as _dedupe_strings,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     is_timeout_exception as _is_timeout_exception,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     pick_bool as _pick_bool,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     pick_positive_float as _pick_positive_float,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     pick_str as _pick_str,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     resolve_trace_id as _resolve_trace_id,
-    to_clean_string as _to_clean_string,
-    to_optional_float as _to_optional_float,
+)
+from vidasync_multiagents_ia.services.ai_router_helpers import (
     warn_if_missing_metrics as _warn_if_missing_metrics,
 )
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService

@@ -1,17 +1,17 @@
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
-from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
-from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
-from vidasync_multiagents_ia.services.plano_texto_normalizado_service import (
-    PlanoTextoNormalizadoService,
-)
 from vidasync_multiagents_ia.services.orchestration.ai_orchestrator import AiOrchestrator
 from vidasync_multiagents_ia.services.orchestration.plano_pipeline_langgraph_orchestrator import (
     LangGraphPlanoPipelineOrchestrator,
 )
 from vidasync_multiagents_ia.services.orchestration.plano_pipeline_legacy_orchestrator import (
     LegacyPlanoPipelineOrchestrator,
+)
+from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
+from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
+from vidasync_multiagents_ia.services.plano_texto_normalizado_service import (
+    PlanoTextoNormalizadoService,
 )
 
 

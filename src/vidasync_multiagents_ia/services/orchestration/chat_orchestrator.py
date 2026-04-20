@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
-from typing import Protocol
+from typing import Any, Protocol
 
 from vidasync_multiagents_ia.schemas import ChatMemoriaEstado, ChatRoteamento, IntencaoChatDetectada
 

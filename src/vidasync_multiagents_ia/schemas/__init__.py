@@ -11,19 +11,6 @@ from vidasync_multiagents_ia.schemas.calorias_texto import (
     SelecaoFonteCalorias,
     TotaisCaloriasTexto,
 )
-from vidasync_multiagents_ia.schemas.frase_porcoes import (
-    AgentePorcoesTexto,
-    FrasePorcoesRequest,
-    FrasePorcoesResponse,
-    ItemPorcaoTexto,
-    ResultadoPorcoesTexto,
-)
-from vidasync_multiagents_ia.schemas.imagem_texto import (
-    AgenteTranscricaoImagemTexto,
-    ImagemTextoItemResponse,
-    ImagemTextoRequest,
-    ImagemTextoResponse,
-)
 from vidasync_multiagents_ia.schemas.foto_alimentos import (
     EstimativaPorcoesFotoRequest,
     EstimativaPorcoesFotoResponse,
@@ -44,17 +31,18 @@ from vidasync_multiagents_ia.schemas.foto_calorias_pipeline_teste import (
     FotoCaloriasPipelineTesteResponse,
     FotoCaloriasPipelineTesteTemposMs,
 )
-from vidasync_multiagents_ia.schemas.openai_chat import (
-    ChatMemoriaEstado,
-    ChatPlanoAnexoInput,
-    ChatRefeicaoAnexoInput,
-    ChatPipelineNome,
-    ChatRoteamento,
-    IntencaoChatCandidata,
-    IntencaoChatDetectada,
-    IntencaoChatNome,
-    OpenAIChatRequest,
-    OpenAIChatResponse,
+from vidasync_multiagents_ia.schemas.frase_porcoes import (
+    AgentePorcoesTexto,
+    FrasePorcoesRequest,
+    FrasePorcoesResponse,
+    ItemPorcaoTexto,
+    ResultadoPorcoesTexto,
+)
+from vidasync_multiagents_ia.schemas.imagem_texto import (
+    AgenteTranscricaoImagemTexto,
+    ImagemTextoItemResponse,
+    ImagemTextoRequest,
+    ImagemTextoResponse,
 )
 from vidasync_multiagents_ia.schemas.nutri_chat import NutriChatRequest, NutriChatResponse
 from vidasync_multiagents_ia.schemas.open_food_facts import (
@@ -63,26 +51,21 @@ from vidasync_multiagents_ia.schemas.open_food_facts import (
     OpenFoodFactsSearchRequest,
     OpenFoodFactsSearchResponse,
 )
+from vidasync_multiagents_ia.schemas.openai_chat import (
+    ChatMemoriaEstado,
+    ChatPipelineNome,
+    ChatPlanoAnexoInput,
+    ChatRefeicaoAnexoInput,
+    ChatRoteamento,
+    IntencaoChatCandidata,
+    IntencaoChatDetectada,
+    IntencaoChatNome,
+    OpenAIChatRequest,
+    OpenAIChatResponse,
+)
 from vidasync_multiagents_ia.schemas.pdf_texto import (
     AgenteTranscricaoPdf,
     PdfTextoResponse,
-)
-from vidasync_multiagents_ia.schemas.plano_texto_normalizado import (
-    AgenteNormalizacaoPlanoTexto,
-    PlanoTextoNormalizadoImagemRequest,
-    PlanoTextoNormalizadoResponse,
-    PlanoTextoNormalizadoSecao,
-)
-from vidasync_multiagents_ia.schemas.plano_imagem_pipeline_teste import (
-    AgentePlanoImagemPipelineTeste,
-    PlanoImagemPipelineTesteRequest,
-    PlanoImagemPipelineTesteResponse,
-)
-from vidasync_multiagents_ia.schemas.plano_pipeline_e2e_teste import (
-    AgentePlanoPipelineE2ETeste,
-    PlanoPipelineE2ETemposMs,
-    PlanoPipelineE2ETesteJsonRequest,
-    PlanoPipelineE2ETesteResponse,
 )
 from vidasync_multiagents_ia.schemas.plano_alimentar import (
     AgenteEstruturacaoPlano,
@@ -100,6 +83,23 @@ from vidasync_multiagents_ia.schemas.plano_alimentar import (
     RefeicaoPlano,
     SubstituicaoPlano,
     SuplementoPlano,
+)
+from vidasync_multiagents_ia.schemas.plano_imagem_pipeline_teste import (
+    AgentePlanoImagemPipelineTeste,
+    PlanoImagemPipelineTesteRequest,
+    PlanoImagemPipelineTesteResponse,
+)
+from vidasync_multiagents_ia.schemas.plano_pipeline_e2e_teste import (
+    AgentePlanoPipelineE2ETeste,
+    PlanoPipelineE2ETemposMs,
+    PlanoPipelineE2ETesteJsonRequest,
+    PlanoPipelineE2ETesteResponse,
+)
+from vidasync_multiagents_ia.schemas.plano_texto_normalizado import (
+    AgenteNormalizacaoPlanoTexto,
+    PlanoTextoNormalizadoImagemRequest,
+    PlanoTextoNormalizadoResponse,
+    PlanoTextoNormalizadoSecao,
 )
 from vidasync_multiagents_ia.schemas.taco_online import (
     TacoOnlineFoodIndexItem,

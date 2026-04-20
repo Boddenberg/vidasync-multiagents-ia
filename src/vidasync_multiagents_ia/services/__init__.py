@@ -1,13 +1,13 @@
 from vidasync_multiagents_ia.services.ai_router_service import AIRouterService
 from vidasync_multiagents_ia.services.audio_transcricao_service import AudioTranscricaoService
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
-from vidasync_multiagents_ia.services.chat_calorias_macros_flow_service import (
-    ChatCaloriasMacrosFlowOutput,
-    ChatCaloriasMacrosFlowService,
-)
 from vidasync_multiagents_ia.services.chat_cadastro_refeicoes_flow_service import (
     ChatCadastroRefeicoesFlowOutput,
     ChatCadastroRefeicoesFlowService,
+)
+from vidasync_multiagents_ia.services.chat_calorias_macros_flow_service import (
+    ChatCaloriasMacrosFlowOutput,
+    ChatCaloriasMacrosFlowService,
 )
 from vidasync_multiagents_ia.services.chat_conversacional_router_service import (
     ChatConversacionalRouteResult,
@@ -22,13 +22,13 @@ from vidasync_multiagents_ia.services.chat_plano_alimentar_multimodal_flow_servi
     ChatPlanoAlimentarMultimodalFlowOutput,
     ChatPlanoAlimentarMultimodalFlowService,
 )
-from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
-    ChatRefeicaoMultimodalFlowOutput,
-    ChatRefeicaoMultimodalFlowService,
-)
 from vidasync_multiagents_ia.services.chat_receitas_flow_service import (
     ChatReceitasFlowOutput,
     ChatReceitasFlowService,
+)
+from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
+    ChatRefeicaoMultimodalFlowOutput,
+    ChatRefeicaoMultimodalFlowService,
 )
 from vidasync_multiagents_ia.services.chat_substituicoes_flow_service import (
     ChatSubstituicoesFlowOutput,
@@ -42,15 +42,17 @@ from vidasync_multiagents_ia.services.chat_tools import (
     ChatToolName,
     build_chat_tool_executor,
 )
+from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
 from vidasync_multiagents_ia.services.foto_calorias_pipeline_teste_service import (
     FotoCaloriasPipelineTesteService,
 )
-from vidasync_multiagents_ia.services.foto_alimentos_service import FotoAlimentosService
 from vidasync_multiagents_ia.services.frase_porcoes_service import FrasePorcoesService
 from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
 from vidasync_multiagents_ia.services.nutri_chat_service import NutriChatService
 from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService
 from vidasync_multiagents_ia.services.openai_chat_service import OpenAIChatService
+from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
+from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
 from vidasync_multiagents_ia.services.plano_imagem_pipeline_teste_service import (
     PlanoImagemPipelineTesteService,
 )
@@ -58,8 +60,6 @@ from vidasync_multiagents_ia.services.plano_pipeline_e2e_teste_service import (
     PlanoPipelineE2ETesteService,
 )
 from vidasync_multiagents_ia.services.plano_texto_normalizado_service import PlanoTextoNormalizadoService
-from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
-from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
 from vidasync_multiagents_ia.services.taco_online_service import TacoOnlineService
 from vidasync_multiagents_ia.services.tbca_service import TBCAService
 

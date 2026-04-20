@@ -10,23 +10,23 @@ from vidasync_multiagents_ia.schemas import (
     ItemCaloriasTexto,
     TotaisCaloriasTexto,
 )
-from vidasync_multiagents_ia.services.chat_conversacional_router_service import (
-    ChatConversacionalRouterService,
+from vidasync_multiagents_ia.services.chat_cadastro_refeicoes_flow_service import (
+    ChatCadastroRefeicoesFlowOutput,
 )
 from vidasync_multiagents_ia.services.chat_calorias_macros_flow_service import (
     ChatCaloriasMacrosFlowOutput,
 )
-from vidasync_multiagents_ia.services.chat_cadastro_refeicoes_flow_service import (
-    ChatCadastroRefeicoesFlowOutput,
+from vidasync_multiagents_ia.services.chat_conversacional_router_service import (
+    ChatConversacionalRouterService,
 )
 from vidasync_multiagents_ia.services.chat_plano_alimentar_multimodal_flow_service import (
     ChatPlanoAlimentarMultimodalFlowOutput,
 )
-from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
-    ChatRefeicaoMultimodalFlowOutput,
-)
 from vidasync_multiagents_ia.services.chat_receitas_flow_service import (
     ChatReceitasFlowOutput,
+)
+from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
+    ChatRefeicaoMultimodalFlowOutput,
 )
 from vidasync_multiagents_ia.services.chat_substituicoes_flow_service import (
     ChatSubstituicoesFlowOutput,

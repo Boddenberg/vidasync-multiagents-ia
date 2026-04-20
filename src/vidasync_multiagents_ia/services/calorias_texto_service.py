@@ -16,36 +16,73 @@ from vidasync_multiagents_ia.schemas import (
     CaloriasTextoResponse,
     FonteCaloriasConsulta,
     ItemCaloriasTexto,
-    OpenFoodFactsProduct,
     SelecaoFonteCalorias,
     TotaisCaloriasTexto,
 )
 from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     StructuredFoodRequest as _StructuredFoodRequest,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     contains_explicit_grams as _contains_explicit_grams,
-    extract_single_food_query as _extract_single_food_query,
-    extract_single_food_request as _extract_single_food_request,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     extract_structured_food_requests as _extract_structured_food_requests,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     format_grams_text as _format_grams_text,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     normalize_structured_food_requests as _normalize_structured_food_requests,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     sum_values as _sum_values,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     to_optional_bool as _to_optional_bool,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     to_optional_float as _to_optional_float,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     to_optional_int as _to_optional_int,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     to_optional_str as _to_optional_str,
+)
+from vidasync_multiagents_ia.services.calorias_texto_parsing import (
     to_str_list as _to_str_list,
 )
 from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     FONTE_OPEN_FOOD_FACTS as _FONTE_OPEN_FOOD_FACTS,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     FONTE_TACO as _FONTE_TACO,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     FonteCaloriasCandidate as _FonteCaloriasCandidate,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     calculate_candidate_portion as _calculate_candidate_portion,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     candidate_score as _candidate_score,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     estimate_confidence as _estimate_confidence,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     has_core_macros as _has_core_macros,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     match_candidate_by_source as _match_candidate_by_source,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     normalize_source_name as _normalize_source_name,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     order_candidates as _order_candidates,
+)
+from vidasync_multiagents_ia.services.calorias_texto_scoring import (
     select_best_open_food_facts_product as _select_best_open_food_facts_product,
 )
 from vidasync_multiagents_ia.services.open_food_facts_service import OpenFoodFactsService

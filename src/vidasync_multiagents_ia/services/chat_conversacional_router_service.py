@@ -22,25 +22,25 @@ from vidasync_multiagents_ia.schemas import (
     IntencaoChatNome,
 )
 from vidasync_multiagents_ia.services.calorias_texto_service import CaloriasTextoService
-from vidasync_multiagents_ia.services.chat_calorias_macros_flow_service import (
-    ChatCaloriasMacrosFlowOutput,
-    ChatCaloriasMacrosFlowService,
-)
 from vidasync_multiagents_ia.services.chat_cadastro_refeicoes_flow_service import (
     ChatCadastroRefeicoesFlowOutput,
     ChatCadastroRefeicoesFlowService,
+)
+from vidasync_multiagents_ia.services.chat_calorias_macros_flow_service import (
+    ChatCaloriasMacrosFlowOutput,
+    ChatCaloriasMacrosFlowService,
 )
 from vidasync_multiagents_ia.services.chat_plano_alimentar_multimodal_flow_service import (
     ChatPlanoAlimentarMultimodalFlowOutput,
     ChatPlanoAlimentarMultimodalFlowService,
 )
-from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
-    ChatRefeicaoMultimodalFlowOutput,
-    ChatRefeicaoMultimodalFlowService,
-)
 from vidasync_multiagents_ia.services.chat_receitas_flow_service import (
     ChatReceitasFlowOutput,
     ChatReceitasFlowService,
+)
+from vidasync_multiagents_ia.services.chat_refeicao_multimodal_flow_service import (
+    ChatRefeicaoMultimodalFlowOutput,
+    ChatRefeicaoMultimodalFlowService,
 )
 from vidasync_multiagents_ia.services.chat_substituicoes_flow_service import (
     ChatSubstituicoesFlowOutput,

@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import (
-    AIRouterRequest,
     AgenteCaloriasTexto,
     AgenteEstruturacaoPlano,
     AgenteNormalizacaoPlanoTexto,
@@ -12,6 +11,7 @@ from vidasync_multiagents_ia.schemas import (
     AgenteTranscricaoAudio,
     AgenteTranscricaoImagemTexto,
     AgenteTranscricaoPdf,
+    AIRouterRequest,
     AudioTranscricaoResponse,
     CaloriasTextoResponse,
     DiagnosticoPlano,
@@ -21,9 +21,9 @@ from vidasync_multiagents_ia.schemas import (
     IdentificacaoFotoResponse,
     ImagemTextoItemResponse,
     ImagemTextoResponse,
+    ItemAlimentarPlano,
     ItemAlimentoEstimado,
     ItemCaloriasTexto,
-    ItemAlimentarPlano,
     ItemPorcaoTexto,
     OpcaoRefeicaoPlano,
     OpenAIChatResponse,
@@ -34,13 +34,13 @@ from vidasync_multiagents_ia.schemas import (
     PlanoTextoNormalizadoSecao,
     RefeicaoPlano,
     ResultadoIdentificacaoFoto,
-    ResultadoPorcoesTexto,
     ResultadoPorcoesFoto,
+    ResultadoPorcoesTexto,
+    TacoOnlineFoodResponse,
+    TacoOnlineNutrients,
     TBCAFoodSelection,
     TBCAMacros,
     TBCASearchResponse,
-    TacoOnlineFoodResponse,
-    TacoOnlineNutrients,
     TotaisCaloriasTexto,
 )
 from vidasync_multiagents_ia.services.ai_router_service import AIRouterService

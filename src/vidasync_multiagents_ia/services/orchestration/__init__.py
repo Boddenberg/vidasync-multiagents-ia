@@ -6,6 +6,8 @@ from vidasync_multiagents_ia.services.orchestration.ai_orchestrator import (
 )
 from vidasync_multiagents_ia.services.orchestration.chat_orchestrator import (
     AiOrchestrator as ChatAiOrchestratorPort,
+)
+from vidasync_multiagents_ia.services.orchestration.chat_orchestrator import (
     AiOrchestratorRequest,
     AiOrchestratorResponse,
     ChatAiOrchestrator,

@@ -8,14 +8,14 @@ from vidasync_multiagents_ia.config import Settings
 from vidasync_multiagents_ia.core import ServiceError
 from vidasync_multiagents_ia.schemas import PlanoAlimentarResponse, PlanoPipelineE2ETesteResponse
 from vidasync_multiagents_ia.services.imagem_texto_service import ImagemTextoService
-from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
-from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
-from vidasync_multiagents_ia.services.plano_texto_normalizado_service import PlanoTextoNormalizadoService
 from vidasync_multiagents_ia.services.orchestration.ai_orchestrator import (
     AiOrchestrator,
     PlanoPipelineExecutionInput,
 )
 from vidasync_multiagents_ia.services.orchestration.factory import build_plano_pipeline_orchestrator
+from vidasync_multiagents_ia.services.pdf_texto_service import PdfTextoService
+from vidasync_multiagents_ia.services.plano_alimentar_service import PlanoAlimentarService
+from vidasync_multiagents_ia.services.plano_texto_normalizado_service import PlanoTextoNormalizadoService
 
 
 @dataclass(slots=True)

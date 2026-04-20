@@ -1,9 +1,9 @@
 import logging
 import os
 
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import uvicorn
 
 from vidasync_multiagents_ia.api import api_router
 from vidasync_multiagents_ia.config import get_settings
